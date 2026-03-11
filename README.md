@@ -1,4 +1,4 @@
-# didyou.gg
+# didyoufaceit
 
 CS2 FACEIT match history search and matchroom analyzer.
 
@@ -6,10 +6,6 @@ Two features:
 
 - **Player vs Player** — find every match two players have shared (as enemies or teammates), with W/L records, filters, and best lineup analysis
 - **Matchroom Analyzer** — paste a FACEIT room URL, get a per-player map breakdown with win rate contributions to help decide which map to pick or ban during veto
-
-## Screenshot
-
-> Matchroom analyzer showing MAP ADVANTAGE view with per-player breakdown, FACEIT levels, and pick/ban recommendations.
 
 ## Stack
 
