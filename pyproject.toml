@@ -1,25 +1,35 @@
 [project]
 name = "didyoufaceit"
 version = "0.2.0"
-description = "Find FACEIT matches played against a specific opponent"
-readme = "README.md"
 requires-python = ">=3.12"
+description = "CS2 FACEIT match history & matchroom analyzer"
 dependencies = [
-  "click>=8.3.1",
-  "httpx>=0.28.1",
-  "rich>=14.3.3",
-  "flask>=3.0.0",
-  "flask-cors>=4.0.0",
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.34,<1",
+  "gunicorn>=23,<24",
+  "httpx>=0.28,<1",
+  "aiosqlite>=0.20,<1",
+  "python-dotenv>=1,<2",
+  "click>=8.1,<9",
+  "rich>=13,<14",
 ]
 
 [project.scripts]
-faceit-finder = "faceit_finder.cli:main"
-faceit-finder-web = "faceit_finder.server:run"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/didyoufaceit"]
+didyoufaceit-web = "didyoufaceit.server:run"
+didyoufaceit = "didyoufaceit.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build]
+packages = ["src/didyoufaceit"]
+
+[dependency-groups]
+dev = ["pytest>=8.2,<9", "pytest-asyncio>=0.24,<1", "ruff>=0.11,<1"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP"]

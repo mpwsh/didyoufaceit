@@ -1,0 +1,12 @@
+src/didyoufaceit/__pycache__/
+*.pyc
+*.pyo
+.venv/
+.env
+*.db
+dist/
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+cache.db
+.DS_Store

@@ -2,8 +2,8 @@
 FROM python:3.13-slim AS base
 
 RUN apt-get -y update && \
-    apt-get -y install --no-install-recommends build-essential && \
-    apt-get -y clean && rm -rf /var/lib/apt/lists/*
+  apt-get -y install --no-install-recommends build-essential && \
+  apt-get -y clean && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.5.7 /uv /usr/local/bin/
 
@@ -27,10 +27,10 @@ RUN uv sync --no-dev --no-editable --inexact
 
 # Remove build deps
 RUN apt-get -y remove --purge build-essential && \
-    apt-get -y autoremove && \
-    apt-get -y clean && rm -rf /var/lib/apt/lists/*
+  apt-get -y autoremove && \
+  apt-get -y clean && rm -rf /var/lib/apt/lists/*
 
 EXPOSE 5000
 
 # Production: gunicorn with uvicorn workers
-CMD ["uv", "run", "gunicorn", "faceit_finder.server:app", "--config", "gunicorn_conf.py"]
+CMD ["uv", "run", "gunicorn", "didyoufaceit.server:app", "--config", "gunicorn_conf.py"]
