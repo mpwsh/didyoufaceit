@@ -1,16 +1,25 @@
 """Async search logic — yields SSE-style events as matches are discovered."""
 
 from __future__ import annotations
+
 import asyncio
 import logging
-from typing import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator, Iterator
 
 from .api import FaceitClient
 from .cache import (
-    init_db, get_cached_match, save_match, update_match_score,
-    link_player_match, link_player_matches_bulk,
-    get_player_match_ids, is_player_fully_scanned, mark_player_scanned,
-    upsert_player, upsert_players_bulk, get_nicknames,
+    get_cached_match,
+    get_nicknames,
+    get_player_match_ids,
+    init_db,
+    is_player_fully_scanned,
+    link_player_match,
+    link_player_matches_bulk,
+    mark_player_scanned,
+    save_match,
+    update_match_score,
+    upsert_player,
+    upsert_players_bulk,
 )
 
 log = logging.getLogger(__name__)
@@ -90,7 +99,8 @@ async def _fetch_player_history(client: FaceitClient, player_id: str, nickname: 
         window_ids: list[str] = []
         oldest_ts: int | None = None
         for page in range(MAX_PAGES):
-            events.append({"type": "status", "msg": f"Fetching history for {nickname}… ({len(match_ids) + len(window_ids):,} so far)"})
+            count = len(match_ids) + len(window_ids)
+            events.append({"type": "status", "msg": f"Fetching history for {nickname}… ({count:,} so far)"})
             history = await client.get_match_history(
                 player_id, game=GAME, offset=page * PAGE_SIZE, limit=PAGE_SIZE, to=to_ts
             )
@@ -242,8 +252,10 @@ async def stream_search(
 
             your_team = opp_team = None
             for faction, pids in cached["teams"].items():
-                if your_id in pids: your_team = faction
-                if opp_id  in pids: opp_team  = faction
+                if your_id in pids:
+                    your_team = faction
+                if opp_id in pids:
+                    opp_team = faction
 
             if your_team is None or opp_team is None:
                 continue

@@ -1,8 +1,10 @@
 """FACEIT API v4 async client with rate limiting and retry."""
 
 from __future__ import annotations
+
 import asyncio
 import logging
+
 import httpx
 
 BASE_URL = "https://open.faceit.com/data/v4"
@@ -81,7 +83,7 @@ class FaceitClient:
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def __aenter__(self) -> "FaceitClient":
+    async def __aenter__(self) -> FaceitClient:
         return self
 
     async def __aexit__(self, *_) -> None:

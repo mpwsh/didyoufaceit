@@ -1,15 +1,19 @@
 """Async matchroom analysis — yields SSE events with per-player map stats."""
 
 from __future__ import annotations
+
 import asyncio
 import logging
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from .api import FaceitClient, FaceitAPIError
 from .cache import (
-    upsert_player, init_db,
-    get_cached_matchroom, save_matchroom,
-    get_cached_player_stats, save_player_stats,
+    get_cached_matchroom,
+    get_cached_player_stats,
+    init_db,
+    save_matchroom,
+    save_player_stats,
+    upsert_player,
 )
 
 log = logging.getLogger(__name__)

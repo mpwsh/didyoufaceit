@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
-import os
 import logging
+import os
+
 import asyncpg
 
 log = logging.getLogger(__name__)

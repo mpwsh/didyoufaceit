@@ -1,21 +1,22 @@
 """FastAPI web server for faceit-finder."""
 
 from __future__ import annotations
-import os
-import json
-import traceback
-import logging
-from pathlib import Path
-from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Query, Request
-from fastapi.responses import StreamingResponse, FileResponse, RedirectResponse, JSONResponse
+import json
+import logging
+import os
+import traceback
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI, Query
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api import FaceitClient
-from .search import stream_search
+from .cache import close_db, init_db
 from .matchroom import stream_matchroom
-from .cache import init_db, close_db
+from .search import stream_search
 
 # Load .env from project root if present
 _env_path = Path(__file__).parent.parent.parent.parent / ".env"
