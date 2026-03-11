@@ -46,8 +46,14 @@ class FaceitClient:
                 # Retry on 503 (overflow) and 429 (rate limit)
                 if r.status_code in (503, 429) and attempt < MAX_RETRIES:
                     wait = RETRY_BACKOFF[min(attempt, len(RETRY_BACKOFF) - 1)]
-                    log.warning("FACEIT API %d on %s — retrying in %.1fs (%d/%d)",
-                                r.status_code, path, wait, attempt + 1, MAX_RETRIES)
+                    log.warning(
+                        "FACEIT API %d on %s — retrying in %.1fs (%d/%d)",
+                        r.status_code,
+                        path,
+                        wait,
+                        attempt + 1,
+                        MAX_RETRIES,
+                    )
                     await asyncio.sleep(wait)
                     continue
 
@@ -62,13 +68,16 @@ class FaceitClient:
     async def get_player_by_id(self, player_id: str) -> dict:
         return await self._get(f"/players/{player_id}")
 
-    async def get_match_history(self, player_id: str, game: str = "cs2",
-                                offset: int = 0, limit: int = 100,
-                                to: int | None = None) -> dict:
+    async def get_match_history(
+        self, player_id: str, game: str = "cs2", offset: int = 0, limit: int = 100, to: int | None = None
+    ) -> dict:
         log.debug("History page offset=%d limit=%d to=%s", offset, limit, to)
         return await self._get(
             f"/players/{player_id}/history",
-            game=game, offset=offset, limit=limit, to=to,
+            game=game,
+            offset=offset,
+            limit=limit,
+            to=to,
         )
 
     async def get_match(self, match_id: str) -> dict:

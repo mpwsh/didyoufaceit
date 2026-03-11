@@ -82,10 +82,7 @@ def main(
 
         try:
             with FaceitClient(api_key) as client:
-                console.print(
-                    f"\n🔍 Looking for matches: [cyan]{you}[/] vs [yellow]{opponent}[/] "
-                    f"in [bold]{game}[/]\n"
-                )
+                console.print(f"\n🔍 Looking for matches: [cyan]{you}[/] vs [yellow]{opponent}[/] in [bold]{game}[/]\n")
                 matches = search_matches(
                     client,
                     your_nickname=you,
@@ -140,10 +137,7 @@ def main(
                 if team_name == m.opponent_team:
                     label += " [yellow](opp)[/]"
                 roster_str = ", ".join(
-                    f"[cyan]{n}[/]" if n == you
-                    else f"[yellow]{n}[/]" if n == opponent
-                    else n
-                    for n in roster
+                    f"[cyan]{n}[/]" if n == you else f"[yellow]{n}[/]" if n == opponent else n for n in roster
                 )
                 table.add_row(f"Team: {label}", roster_str)
 

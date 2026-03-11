@@ -24,13 +24,14 @@ from .cache import (
 
 log = logging.getLogger(__name__)
 
-GAME      = "cs2"
+GAME = "cs2"
 PAGE_SIZE = 100
 MAX_PAGES = 10
 BATCH_SIZE = 10  # parallel match fetches per batch
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _players_in_raw(match: dict) -> Iterator[tuple[str, str, str]]:
     for team_name, team_data in match.get("teams", {}).items():
@@ -50,9 +51,7 @@ def _map_name(match: dict) -> str:
 def _raw_to_id_teams(match: dict) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for team_name, team_data in match.get("teams", {}).items():
-        out[team_name] = [
-            p["player_id"] for p in team_data.get("roster", []) if "player_id" in p
-        ]
+        out[team_name] = [p["player_id"] for p in team_data.get("roster", []) if "player_id" in p]
     return out
 
 
@@ -78,11 +77,11 @@ def _round_score_from_stats(stats: dict, series_score: dict) -> dict | None:
             return None
         scores = [int(t["team_stats"]["Final Score"]) for t in stat_teams]
         winner_faction = max(series_score, key=lambda f: series_score[f])
-        loser_faction  = min(series_score, key=lambda f: series_score[f])
+        loser_faction = min(series_score, key=lambda f: series_score[f])
         winner_idx = 0 if scores[0] >= scores[1] else 1
         return {
             winner_faction: scores[winner_idx],
-            loser_faction:  scores[1 - winner_idx],
+            loser_faction: scores[1 - winner_idx],
         }
     except (KeyError, IndexError, ValueError, TypeError):
         return None
@@ -131,32 +130,38 @@ async def _fetch_single_match(client: FaceitClient, match_id: str) -> tuple[str,
 
 async def _process_raw_match(client: FaceitClient, match_id: str, raw: dict) -> dict:
     """Process a raw API match into a cached dict, saving to DB."""
-    id_teams     = _raw_to_id_teams(raw)
-    map_name     = _map_name(raw)
-    started      = raw.get("started_at", 0)
-    status       = raw.get("status", "unknown")
-    url          = raw.get("faceit_url", "").replace("{lang}", "en")
-    comp_type    = raw.get("competition_type", "") or ""
-    comp_name    = raw.get("competition_name", "") or ""
+    id_teams = _raw_to_id_teams(raw)
+    map_name = _map_name(raw)
+    started = raw.get("started_at", 0)
+    status = raw.get("status", "unknown")
+    url = raw.get("faceit_url", "").replace("{lang}", "en")
+    comp_type = raw.get("competition_type", "") or ""
+    comp_name = raw.get("competition_name", "") or ""
     series_score = _raw_to_score(raw)
 
     raw_players = [(pid, nick) for _, pid, nick in _players_in_raw(raw) if nick]
     await upsert_players_bulk(raw_players)
 
-    await save_match(match_id, started, status, map_name, id_teams, series_score,
-                     url, comp_type, comp_name)
+    await save_match(match_id, started, status, map_name, id_teams, series_score, url, comp_type, comp_name)
     for pid in (pid for _, pid, _ in _players_in_raw(raw)):
         await link_player_match(pid, match_id)
 
     return {
-        "match_id": match_id, "started_at": started, "status": status,
-        "map": map_name, "teams": id_teams, "score": series_score,
-        "faceit_url": url, "competition_type": comp_type,
-        "competition_name": comp_name, "_needs_stats": True,
+        "match_id": match_id,
+        "started_at": started,
+        "status": status,
+        "map": map_name,
+        "teams": id_teams,
+        "score": series_score,
+        "faceit_url": url,
+        "competition_type": comp_type,
+        "competition_name": comp_name,
+        "_needs_stats": True,
     }
 
 
 # ── streaming search ──────────────────────────────────────────────────────────
+
 
 async def stream_search(
     client: FaceitClient,
@@ -173,16 +178,16 @@ async def stream_search(
         yield {"type": "error", "msg": str(e)}
         return
 
-    your_id   = you_info["player_id"]
+    your_id = you_info["player_id"]
     your_nick = you_info["nickname"]
-    opp_id    = opp_info["player_id"]
-    opp_nick  = opp_info["nickname"]
+    opp_id = opp_info["player_id"]
+    opp_nick = opp_info["nickname"]
 
     await upsert_player(your_id, your_nick)
     await upsert_player(opp_id, opp_nick)
 
     your_scanned = await is_player_fully_scanned(your_id)
-    opp_scanned  = await is_player_fully_scanned(opp_id)
+    opp_scanned = await is_player_fully_scanned(opp_id)
 
     # ── Step 1: history collection ────────────────────────────────────────────
     if your_scanned:
@@ -218,7 +223,7 @@ async def stream_search(
     checked = 0
 
     for batch_start in range(0, total, BATCH_SIZE):
-        batch_ids = all_match_ids[batch_start:batch_start + BATCH_SIZE]
+        batch_ids = all_match_ids[batch_start : batch_start + BATCH_SIZE]
 
         # Phase 1: check cache for entire batch
         cached_results: dict[str, dict | None] = {}
@@ -280,16 +285,20 @@ async def stream_search(
             all_pids = [pid for pids in cached["teams"].values() for pid in pids]
             nick_map = await get_nicknames(all_pids)
             display_teams = {
-                faction: [nick_map.get(pid, pid[:8]) for pid in pids]
-                for faction, pids in cached["teams"].items()
+                faction: [nick_map.get(pid, pid[:8]) for pid in pids] for faction, pids in cached["teams"].items()
             }
 
             yield {
-                "type": "match", "match_id": mid,
-                "started_at": cached["started_at"], "status": cached["status"],
-                "map": cached["map"], "teams": display_teams,
-                "teams_ids": cached["teams"], "your_team": your_team,
-                "opponent_team": opp_team, "score": score_str,
+                "type": "match",
+                "match_id": mid,
+                "started_at": cached["started_at"],
+                "status": cached["status"],
+                "map": cached["map"],
+                "teams": display_teams,
+                "teams_ids": cached["teams"],
+                "your_team": your_team,
+                "opponent_team": opp_team,
+                "score": score_str,
                 "faceit_url": cached["faceit_url"],
                 "competition_type": cached.get("competition_type", ""),
                 "competition_name": cached.get("competition_name", ""),
@@ -300,7 +309,9 @@ async def stream_search(
         yield {"type": "progress", "checked": checked, "total": total, "found": found_count}
 
     yield {
-        "type": "done", "total_found": found_count,
-        "total_checked": total, "new_fetched": new_fetched,
+        "type": "done",
+        "total_found": found_count,
+        "total_checked": total,
+        "new_fetched": new_fetched,
         "cached": your_scanned and opp_scanned,
     }

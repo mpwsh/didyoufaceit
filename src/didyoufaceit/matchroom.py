@@ -19,10 +19,17 @@ from .cache import (
 log = logging.getLogger(__name__)
 
 _LABEL_TO_MAP_ID = {
-    "dust2": "de_dust2", "mirage": "de_mirage", "inferno": "de_inferno",
-    "nuke": "de_nuke", "ancient": "de_ancient", "anubis": "de_anubis",
-    "vertigo": "de_vertigo", "train": "de_train", "cache": "de_cache",
-    "overpass": "de_overpass", "cobblestone": "de_cobblestone",
+    "dust2": "de_dust2",
+    "mirage": "de_mirage",
+    "inferno": "de_inferno",
+    "nuke": "de_nuke",
+    "ancient": "de_ancient",
+    "anubis": "de_anubis",
+    "vertigo": "de_vertigo",
+    "train": "de_train",
+    "cache": "de_cache",
+    "overpass": "de_overpass",
+    "cobblestone": "de_cobblestone",
 }
 
 
@@ -104,10 +111,14 @@ async def stream_matchroom(
             nick = p.get("nickname", pid[:8])
             elo = p.get("elo", 0)
             skill_level = p.get("game_skill_level", 0)
-            factions[faction].append({
-                "player_id": pid, "nickname": nick,
-                "elo": elo, "skill_level": skill_level,
-            })
+            factions[faction].append(
+                {
+                    "player_id": pid,
+                    "nickname": nick,
+                    "elo": elo,
+                    "skill_level": skill_level,
+                }
+            )
             await upsert_player(pid, nick)
 
     # Map pool from voting
@@ -123,10 +134,7 @@ async def stream_matchroom(
     all_players = [(faction, p) for faction, players in factions.items() for p in players]
 
     # Fetch all stats in parallel (respects httpx connection pool limits)
-    stats_tasks = [
-        _fetch_player_stats(client, p["player_id"], p["nickname"])
-        for _, p in all_players
-    ]
+    stats_tasks = [_fetch_player_stats(client, p["player_id"], p["nickname"]) for _, p in all_players]
     stats_results = await asyncio.gather(*stats_tasks)
 
     # Emit player events and accumulate summary

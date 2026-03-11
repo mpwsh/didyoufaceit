@@ -135,6 +135,7 @@ async def faceit_url_redirect(faceit_path: str):
 def run():
     """Dev server entrypoint."""
     import uvicorn
+
     port = int(os.environ.get("PORT", 5000))
     log.info("Starting didyoufaceit on http://0.0.0.0:%d", port)
     uvicorn.run(
