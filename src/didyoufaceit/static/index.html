@@ -368,6 +368,12 @@
             >as teammates</span
           >
           <template x-if="teammates.length > 0">
+            <span
+              class="font-mono text-[11px] text-blue bg-[#0a1a2a] border border-[#1a3a5a] px-2.5 py-0.5 rounded-sm"
+              x-text="filteredTeammates.length + ' matches'"
+            ></span>
+          </template>
+          <template x-if="teammates.length > 0">
             <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
               <div class="flex gap-3 font-mono text-[12px]">
                 <span class="text-win" x-text="tmWins + 'W'"></span>
@@ -382,6 +388,34 @@
                 :class="tmWr >= 55 ? 'text-win' : tmWr <= 40 ? 'text-lose' : 'text-[#e8e8e8]'"
                 x-text="tmWr + '% wr'"
               ></span>
+              <template x-if="bestMap">
+                <div class="flex items-center gap-1.5 font-mono text-[11px]">
+                  <div class="w-px self-stretch bg-border flex-shrink-0"></div>
+                  <span class="text-muted">best</span>
+                  <span
+                    class="font-display tracking-wide text-win text-[13px]"
+                    x-text="bestMap"
+                  ></span>
+                  <span
+                    class="text-muted"
+                    x-text="'(' + Math.round(filteredMapWins[bestMap].w / (filteredMapWins[bestMap].w + filteredMapWins[bestMap].l) * 100) + '%\u00a0·\u00a0' + filteredMapWins[bestMap].w + 'W\u00a0' + filteredMapWins[bestMap].l + 'L)'"
+                  ></span>
+                </div>
+              </template>
+              <template x-if="worstMap">
+                <div class="flex items-center gap-1.5 font-mono text-[11px]">
+                  <div class="w-px self-stretch bg-border flex-shrink-0"></div>
+                  <span class="text-muted">worst</span>
+                  <span
+                    class="font-display tracking-wide text-lose text-[13px]"
+                    x-text="worstMap"
+                  ></span>
+                  <span
+                    class="text-muted"
+                    x-text="'(' + Math.round(filteredMapWins[worstMap].w / (filteredMapWins[worstMap].w + filteredMapWins[worstMap].l) * 100) + '%\u00a0·\u00a0' + filteredMapWins[worstMap].w + 'W\u00a0' + filteredMapWins[worstMap].l + 'L)'"
+                  ></span>
+                </div>
+              </template>
             </div>
           </template>
           <template x-if="teammates.length === 0 && !searching"
@@ -389,12 +423,6 @@
               >no matches found</span
             ></template
           >
-          <template x-if="teammates.length > 0">
-            <span
-              class="ml-auto font-mono text-[11px] text-blue bg-[#0a1a2a] border border-[#1a3a5a] px-2.5 py-0.5 rounded-sm"
-              x-text="filteredTeammates.length + ' matches'"
-            ></span>
-          </template>
         </div>
 
         <!-- ── BEST LINEUPS (above matches, ranked by Wilson score) ── -->
@@ -427,7 +455,7 @@
                   >
                     <template x-for="nick in lu.roster" :key="nick">
                       <span
-                        :class="nick === you ? 'text-brand' : 'text-[#e8e8e8]'"
+                        :class="nick === you ? 'text-brand' : nick === opp ? 'text-blue' : 'text-[#e8e8e8]'"
                         x-text="nick"
                       ></span>
                     </template>
