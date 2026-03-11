@@ -6,7 +6,7 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator
 
-from .api import FaceitClient, FaceitAPIError
+from .api import FaceitAPIError, FaceitClient
 from .cache import (
     get_cached_matchroom,
     get_cached_player_stats,

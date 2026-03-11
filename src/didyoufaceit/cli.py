@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import click
+from rich import box
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-from rich import box
 
 from .api import FaceitClient
 from .search import search_matches
@@ -21,7 +20,7 @@ console = Console()
 def _ts(unix: int) -> str:
     if not unix:
         return "unknown"
-    dt = datetime.fromtimestamp(unix, tz=timezone.utc)
+    dt = datetime.fromtimestamp(unix, tz=UTC)
     return dt.strftime("%Y-%m-%d %H:%M UTC")
 
 
