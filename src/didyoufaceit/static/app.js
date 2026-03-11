@@ -24,31 +24,6 @@ function fmtDate(unix) {
   ];
 }
 
-function rosterHtml(teams, yourTeam, you, opp) {
-  const yours = (teams[yourTeam] || [])
-    .map((n) => {
-      if (n === you) return `<span class="text-brand">${n}</span>`;
-      if (n === opp) return `<span class="text-blue">${n}</span>`;
-      return n;
-    })
-    .join(", ");
-  const theirs = Object.entries(teams)
-    .filter(([t]) => t !== yourTeam)
-    .flatMap(([, r]) =>
-      r.map((n) => (n === opp ? `<span class="text-blue">${n}</span>` : n)),
-    )
-    .join(", ");
-  return theirs
-    ? `${yours}&nbsp;&nbsp;<span class="text-border">|</span>&nbsp;&nbsp;${theirs}`
-    : yours;
-}
-
-function tournamentBadgeHtml(m) {
-  if (!m.competition_type || m.competition_type === "matchmaking") return "";
-  const label = m.competition_name || m.competition_type;
-  return `<span class="font-mono text-[9px] tracking-[1px] uppercase text-gold bg-[#1a1200] border border-[#3a2800] px-1.5 py-0.5 rounded-sm truncate max-w-[200px]" title="${label}">🏆 ${label}</span>`;
-}
-
 // Map ID → display name
 const MAP_NAMES = {
   de_dust2: "Dust2",
@@ -93,10 +68,43 @@ function eloToLevel(elo) {
 }
 
 function levelColor(lvl) {
-  if (lvl >= 10) return "#ff5500"; // brand orange for lvl 10
-  if (lvl >= 7) return "#f59e0b"; // gold
-  if (lvl >= 4) return "#e8e8e8"; // white
-  return "#666666"; // muted for low levels
+  if (lvl >= 10) return "#ff5500";
+  if (lvl >= 7) return "#f59e0b";
+  if (lvl >= 4) return "#e8e8e8";
+  return "#666666";
+}
+
+// Wilson score lower bound — ranks by confidence that true WR is high
+// z = 1.645 for 90% confidence
+function wilsonScore(wins, total) {
+  if (total === 0) return 0;
+  const z = 1.645;
+  const p = wins / total;
+  const denom = 1 + (z * z) / total;
+  const center = p + (z * z) / (2 * total);
+  const spread =
+    z * Math.sqrt((p * (1 - p)) / total + (z * z) / (4 * total * total));
+  return (center - spread) / denom;
+}
+
+// Clean up API error messages for display
+function friendlyError(msg) {
+  if (!msg) return "Something went wrong.";
+  if (msg.includes("404"))
+    return "Player or match not found. Check the spelling and try again.";
+  if (msg.includes("401") || msg.includes("403"))
+    return "API authentication error. Please try again later.";
+  if (msg.includes("503") || msg.includes("502"))
+    return "FACEIT servers are busy. Please try again in a moment.";
+  if (msg.includes("429"))
+    return "Too many requests. Please wait a moment and try again.";
+  if (msg.includes("Connection lost")) return msg;
+  // Strip raw JSON/API details
+  const clean = msg
+    .replace(/\{.*\}/s, "")
+    .replace(/FACEIT API \d+ on \/[^\s:]+:?\s*/, "")
+    .trim();
+  return clean || "Something went wrong. Please try again.";
 }
 
 // ── Alpine app ────────────────────────────────────────────────────────────────
@@ -136,6 +144,10 @@ function app() {
     // filters
     filterMap: "all",
     filterYear: "all",
+
+    // pagination
+    enemiesShown: 25,
+    teammatesShown: 25,
 
     // ── computed (player vs player) ──────────────────────────────────────────
 
@@ -183,6 +195,13 @@ function app() {
       return [...this.teammates]
         .filter((m) => this._passes(m))
         .sort((a, b) => b.started_at - a.started_at);
+    },
+    // Paginated slices
+    get pagedEnemies() {
+      return this.filteredEnemies.slice(0, this.enemiesShown);
+    },
+    get pagedTeammates() {
+      return this.filteredTeammates.slice(0, this.teammatesShown);
     },
     get youWins() {
       return this.filteredEnemies.filter((m) => scoreInfo(m.score).win === true)
@@ -261,6 +280,7 @@ function app() {
       }
       return worst;
     },
+    // Best lineups — ranked by Wilson score (penalizes low sample size)
     get bestLineups() {
       const counts = {};
       for (const m of this.teammates) {
@@ -277,33 +297,66 @@ function app() {
         else counts[key].d++;
       }
       return Object.values(counts)
-        .filter((c) => c.w + c.l + c.d >= 2)
-        .sort((a, b) => {
-          const wrA = a.w + a.l > 0 ? a.w / (a.w + a.l) : 0;
-          const wrB = b.w + b.l > 0 ? b.w / (b.w + b.l) : 0;
-          return wrB !== wrA ? wrB - wrA : b.w + b.l + b.d - (a.w + a.l + a.d);
-        })
-        .slice(0, 5);
+        .filter((c) => c.w + c.l >= 2)
+        .map((c) => ({
+          ...c,
+          total: c.w + c.l + c.d,
+          wr: c.w + c.l > 0 ? Math.round((c.w / (c.w + c.l)) * 100) : 0,
+          wilson: wilsonScore(c.w, c.w + c.l),
+        }))
+        .sort((a, b) => b.wilson - a.wilson)
+        .slice(0, 8);
+    },
+
+    // Match card helpers (used by templates instead of x-html)
+    matchDate(m) {
+      return fmtDate(m.started_at);
+    },
+    matchScore(m) {
+      return scoreInfo(m.score);
+    },
+    matchMap(m) {
+      return m.map || "UNKNOWN";
+    },
+    matchIsTournament(m) {
+      return m.competition_type && m.competition_type !== "matchmaking";
+    },
+    matchTournamentLabel(m) {
+      return m.competition_name || m.competition_type;
+    },
+    matchRosterYours(m) {
+      return (m.teams[m.your_team] || []).map((n) => {
+        if (n === this.you) return { name: n, cls: "text-brand" };
+        if (n === this.opp) return { name: n, cls: "text-blue" };
+        return { name: n, cls: "" };
+      });
+    },
+    matchRosterTheirs(m) {
+      return Object.entries(m.teams)
+        .filter(([t]) => t !== m.your_team)
+        .flatMap(([, r]) =>
+          r.map((n) =>
+            n === this.opp
+              ? { name: n, cls: "text-blue" }
+              : { name: n, cls: "" },
+          ),
+        );
     },
 
     // ── Matchroom computed ──────────────────────────────────────────────────
 
-    // Perspective: 0 = sort by advantage for first faction, 1 = second
     mrPerspective: 0,
 
     mrMapName(id) {
       return mapDisplayName(id);
     },
-
     mrWrColor(wr) {
       return wrColor(wr);
     },
-
     mrLevelColor(lvl) {
       return levelColor(lvl);
     },
 
-    // For a faction + map, calculate each player's WRc
     mrPlayerContribs(faction, mapId) {
       const players = this.mrFactions[faction]?.players || [];
       const totalMatches = players.reduce(
@@ -330,11 +383,10 @@ function app() {
         .sort((a, b) => b.wrc - a.wrc);
     },
 
-    // Team depth: how many players have 20+ matches on a map
     mrTeamDepth(faction, mapId) {
       const players = this.mrFactions[faction]?.players || [];
-      let experienced = 0;
-      let withData = 0;
+      let experienced = 0,
+        withData = 0;
       for (const p of players) {
         const ms = p.map_stats?.[mapId];
         if (ms && ms.matches > 0) {
@@ -345,20 +397,16 @@ function app() {
       return { experienced, withData, total: players.length };
     },
 
-    // All maps that have data from player stats (union across both teams)
     get mrAllMaps() {
       const maps = new Set();
       for (const f of Object.values(this.mrFactions)) {
         for (const p of f.players || []) {
-          for (const mapId of Object.keys(p.map_stats || {})) {
-            maps.add(mapId);
-          }
+          for (const mapId of Object.keys(p.map_stats || {})) maps.add(mapId);
         }
       }
       return Array.from(maps).sort();
     },
 
-    // Team WR for a given faction + map (computed from player stats)
     mrTeamWr(faction, mapId) {
       const players = this.mrFactions[faction]?.players || [];
       let totalWins = 0,
@@ -374,26 +422,21 @@ function app() {
       return Math.round((totalWins / totalMatches) * 100);
     },
 
-    // Map recommendation: sorted by advantage for the selected perspective team
-    // Returns [{id, f1wr, f2wr, delta, f1depth, f2depth, f1contribs, f2contribs}]
     get mrMapRecommendation() {
       const factionKeys = Object.keys(this.mrFactions);
       if (factionKeys.length < 2) return [];
       const [f1, f2] = factionKeys;
-
       const rows = [];
       for (const mapId of this.mrAllMaps) {
         const f1wr = this.mrTeamWr(f1, mapId);
         const f2wr = this.mrTeamWr(f2, mapId);
         if (f1wr === null && f2wr === null) continue;
-        // Delta is always from f1's perspective in raw data
         const rawDelta = (f1wr || 0) - (f2wr || 0);
         rows.push({
           id: mapId,
-          f1wr: f1wr !== null ? f1wr : null,
-          f2wr: f2wr !== null ? f2wr : null,
-          rawDelta: rawDelta,
-          // delta flipped based on perspective
+          f1wr,
+          f2wr,
+          rawDelta,
           delta: this.mrPerspective === 0 ? rawDelta : -rawDelta,
           f1depth: this.mrTeamDepth(f1, mapId),
           f2depth: this.mrTeamDepth(f2, mapId),
@@ -401,19 +444,16 @@ function app() {
           f2contribs: this.mrPlayerContribs(f2, mapId),
         });
       }
-      // Sort by delta descending (best maps for selected perspective team first)
       rows.sort((a, b) => b.delta - a.delta);
       return rows;
     },
 
-    // Which faction index is currently the "advantage" perspective
     get mrActiveTeamIdx() {
       return this.mrPerspective;
     },
     get mrOtherTeamIdx() {
       return this.mrPerspective === 0 ? 1 : 0;
     },
-
     get mrFactionKeys() {
       return Object.keys(this.mrFactions);
     },
@@ -471,42 +511,17 @@ function app() {
       this.cacheNotice = null;
       this.filterMap = "all";
       this.filterYear = "all";
+      this.enemiesShown = 25;
+      this.teammatesShown = 25;
     },
 
     newSearch() {
       this._resetMatchroom();
       this._resetPlayerSearch();
       this.matchroomInput = "";
-      // Clear URL params
       const url = new URL(window.location);
       url.search = "";
       window.history.replaceState({}, "", url);
-    },
-
-    // ── Match card HTML ──────────────────────────────────────────────────────
-
-    matchCard(m) {
-      const { label, cls, win } = scoreInfo(m.score);
-      const resultText = win === true ? "win" : win === false ? "loss" : "draw";
-      const resultColor =
-        win === true ? "text-win" : win === false ? "text-lose" : "text-muted";
-      const [d, t] = fmtDate(m.started_at);
-      return `
-        <a href="${m.faceit_url || "#"}" target="_blank" rel="noopener"
-           class="bg-surface border border-border px-5 py-3.5 grid grid-cols-[72px_1fr_auto] gap-4 items-center transition-colors hover:border-brand no-underline text-[#e8e8e8] card-enter block">
-          <div class="font-mono text-[11px] text-muted leading-relaxed">${d}<br>${t}</div>
-          <div class="flex flex-col gap-1 min-w-0">
-            <div class="flex items-center gap-2">
-              <span class="font-display text-lg tracking-widest">${m.map || "UNKNOWN"}</span>
-              ${tournamentBadgeHtml(m)}
-            </div>
-            <div class="font-mono text-[11px] text-muted truncate">${rosterHtml(m.teams, m.your_team, this.you, this.opp)}</div>
-          </div>
-          <div class="text-right flex-shrink-0">
-            <div class="font-display text-[22px] tracking-widest leading-none ${cls}">${label}</div>
-            <div class="font-mono text-[10px] tracking-[1px] uppercase mt-0.5 ${resultColor}">${resultText}</div>
-          </div>
-        </a>`;
     },
 
     // ── SSE: Player vs Player search ─────────────────────────────────────────
@@ -514,7 +529,6 @@ function app() {
     _es: null,
 
     doSearch() {
-      // If matchroom input has content, run matchroom mode
       if (this.matchroomInput.trim()) {
         this.doMatchroom();
         return;
@@ -526,27 +540,25 @@ function app() {
         return;
       }
 
-      // Reset matchroom state when starting player search
       this._resetMatchroom();
-
       if (this._es) {
         this._es.close();
         this._es = null;
       }
 
-      // reset player search
       this.errorMsg = "";
       this.cacheNotice = null;
       this.enemies = [];
       this.teammates = [];
       this.filterMap = "all";
       this.filterYear = "all";
+      this.enemiesShown = 25;
+      this.teammatesShown = 25;
 
       this.you = you;
       this.opp = opp;
       this.searching = true;
 
-      // make the URL shareable
       const url = new URL(window.location);
       url.searchParams.delete("room");
       url.searchParams.set("a", you);
@@ -574,7 +586,6 @@ function app() {
           case "status":
             this.statusMsg = ev.msg;
             break;
-
           case "progress":
             if (ev.total) this.progressTotal = ev.total;
             if (ev.checked) this.progressChecked = ev.checked;
@@ -583,22 +594,20 @@ function app() {
               this.statusMsg = `Found ${ev.found} match${ev.found !== 1 ? "es" : ""} so far…`;
             }
             break;
-
           case "match":
             this.foundCount++;
-            this._ingest(ev);
+            if (ev.same_team) this.teammates.push(ev);
+            else this.enemies.push(ev);
             break;
-
           case "done":
             this.searching = false;
             this._finalize(ev);
             es.close();
             this._es = null;
             break;
-
           case "error":
             this.searching = false;
-            this.errorMsg = ev.msg;
+            this.errorMsg = friendlyError(ev.msg);
             es.close();
             this._es = null;
             break;
@@ -612,14 +621,6 @@ function app() {
         es.close();
         this._es = null;
       };
-    },
-
-    _ingest(m) {
-      if (m.same_team) {
-        this.teammates.push(m);
-      } else {
-        this.enemies.push(m);
-      }
     },
 
     _finalize(ev) {
@@ -641,7 +642,6 @@ function app() {
       let raw = this.matchroomInput.trim();
       if (!raw) return;
 
-      // Reset player search state when starting matchroom
       this._resetPlayerSearch();
 
       if (raw.includes("room/"))
@@ -655,7 +655,6 @@ function app() {
       this.mrPickedMap = null;
       this.mrDone = false;
 
-      // make the URL shareable
       const url = new URL(window.location);
       url.searchParams.delete("a");
       url.searchParams.delete("b");
@@ -684,16 +683,14 @@ function app() {
           case "status":
             this.mrStatus = ev.msg;
             break;
-
           case "player": {
             const factions = { ...this.mrFactions };
-            if (!factions[ev.faction]) {
+            if (!factions[ev.faction])
               factions[ev.faction] = {
                 name: ev.faction,
                 players: [],
                 map_scores: {},
               };
-            }
             factions[ev.faction] = {
               ...factions[ev.faction],
               players: [
@@ -710,7 +707,6 @@ function app() {
             this.mrFactions = factions;
             break;
           }
-
           case "summary": {
             const updated = { ...this.mrFactions };
             for (const [faction, data] of Object.entries(ev.factions)) {
@@ -726,17 +722,15 @@ function app() {
             this.mrPickedMap = ev.picked_map;
             break;
           }
-
           case "done":
             this.mrSearching = false;
             this.mrDone = true;
             es.close();
             this._mrEs = null;
             break;
-
           case "error":
             this.mrSearching = false;
-            this.mrError = ev.msg;
+            this.mrError = friendlyError(ev.msg);
             es.close();
             this._mrEs = null;
             break;

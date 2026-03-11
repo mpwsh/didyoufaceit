@@ -3,26 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>didyou</title>
-
-    <!-- Tailwind v4 CDN -->
+    <title>didyoufaceit</title>
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Alpine.js v3 -->
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
     ></script>
-
-    <!-- App logic -->
     <script src="/static/app.js"></script>
-
-    <!-- Fonts -->
     <link
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap"
       rel="stylesheet"
     />
-
     <script>
       tailwind.config = {
         darkMode: "class",
@@ -47,9 +38,7 @@
         },
       };
     </script>
-
     <style>
-      /* grid bg */
       body::before {
         content: "";
         position: fixed;
@@ -61,8 +50,6 @@
         pointer-events: none;
         z-index: 0;
       }
-
-      /* indeterminate progress bar */
       @keyframes indeterminate {
         0% {
           transform: translateX(-120%);
@@ -74,8 +61,6 @@
       .progress-indeterminate {
         animation: indeterminate 1.4s ease-in-out infinite;
       }
-
-      /* match card slide-in */
       @keyframes fadeSlide {
         from {
           opacity: 0;
@@ -89,8 +74,6 @@
       .card-enter {
         animation: fadeSlide 0.22s ease both;
       }
-
-      /* loading pulse */
       @keyframes blink {
         0%,
         100% {
@@ -105,22 +88,25 @@
       }
     </style>
   </head>
-
   <body
     class="bg-[#0d0d0d] text-[#e8e8e8] font-sans min-h-screen overflow-x-hidden"
     x-data="app()"
     x-init="init()"
   >
     <div class="relative z-10 max-w-4xl mx-auto px-6">
-      <!-- ── COLLAPSED HEADER BAR (shown when results are visible) ── -->
+      <!-- ── COLLAPSED HEADER (results visible) ── -->
       <div
         x-show="hasAnyResults"
         x-transition
         class="flex items-center justify-between py-4 border-b border-border mb-8"
       >
-        <div class="font-display text-2xl tracking-widest leading-none">
+        <a
+          href="/"
+          @click.prevent="newSearch()"
+          class="font-display text-2xl tracking-widest leading-none cursor-pointer hover:opacity-80 transition-opacity"
+        >
           DIDYOU<span class="text-brand">FACEIT</span>
-        </div>
+        </a>
         <button
           @click="newSearch()"
           class="font-mono text-[11px] tracking-[2px] uppercase text-muted border border-border px-4 py-2 transition-colors hover:border-brand hover:text-[#e8e8e8]"
@@ -129,17 +115,19 @@
         </button>
       </div>
 
-      <!-- ── FULL HEADER (shown when no results) ── -->
+      <!-- ── FULL HEADER (no results) ── -->
       <header
         x-show="!hasAnyResults"
         x-transition
         class="py-12 border-b border-border mb-12"
       >
-        <div
-          class="font-display text-[clamp(48px,8vw,80px)] tracking-widest leading-none"
-        >
-          DIDYOU<span class="text-brand">FACEIT</span>
-        </div>
+        <a href="/" class="block">
+          <div
+            class="font-display text-[clamp(48px,8vw,80px)] tracking-widest leading-none"
+          >
+            DIDYOU<span class="text-brand">FACEIT</span>
+          </div>
+        </a>
         <div
           class="font-mono text-[11px] text-muted tracking-[3px] uppercase mt-2"
         >
@@ -147,20 +135,18 @@
         </div>
       </header>
 
-      <!-- ── SEARCH CARD (hidden when results showing) ── -->
+      <!-- ── SEARCH CARD (hidden only when actively searching or showing results) ── -->
       <div
-        x-show="!hasAnyResults"
+        x-show="!showResults && !mrDone"
         x-transition
         class="bg-surface border border-border p-8 mb-10"
       >
         <div class="grid grid-cols-[1fr_auto_1fr] gap-4 items-end mb-5">
-          <!-- Your nick -->
           <div>
             <label
               class="block font-mono text-[10px] tracking-[2px] uppercase text-muted mb-2"
+              >Your Nickname</label
             >
-              Your Nickname
-            </label>
             <input
               type="text"
               x-model="youInput"
@@ -171,21 +157,16 @@
               class="w-full bg-[#0d0d0d] border border-border text-[#e8e8e8] font-mono text-[15px] px-4 py-3 outline-none transition-colors focus:border-brand placeholder-[#333]"
             />
           </div>
-
-          <!-- VS badge -->
           <div
             class="font-display text-[28px] text-brand text-center tracking-widest pb-3"
           >
             VS
           </div>
-
-          <!-- Opponent nick -->
           <div>
             <label
               class="block font-mono text-[10px] tracking-[2px] uppercase text-muted mb-2"
+              >Opponent Nickname</label
             >
-              Opponent Nickname
-            </label>
             <input
               type="text"
               x-model="oppInput"
@@ -197,8 +178,6 @@
             />
           </div>
         </div>
-
-        <!-- Search button -->
         <button
           @click="doSearch()"
           :disabled="searching || mrSearching"
@@ -229,8 +208,6 @@
             x-text="(searching || mrSearching) ? 'SEARCHING…' : 'SEARCH'"
           ></span>
         </button>
-
-        <!-- Matchroom divider -->
         <div class="flex items-center gap-4 mt-6">
           <div class="flex-1 h-px bg-border"></div>
           <span
@@ -239,8 +216,6 @@
           >
           <div class="flex-1 h-px bg-border"></div>
         </div>
-
-        <!-- Matchroom input -->
         <div class="mt-4">
           <input
             type="text"
@@ -252,8 +227,6 @@
             class="w-full bg-[#0d0d0d] border border-border text-[#e8e8e8] font-mono text-[13px] px-4 py-3 outline-none transition-colors focus:border-brand placeholder-[#333]"
           />
         </div>
-
-        <!-- Cache notice -->
         <div
           x-show="cacheNotice"
           x-transition
@@ -267,7 +240,7 @@
         </div>
       </div>
 
-      <!-- ── PROGRESS AREA ── -->
+      <!-- ── PROGRESS ── -->
       <div x-show="searching" x-transition class="mb-8">
         <div class="flex justify-between items-end mb-2">
           <span
@@ -280,14 +253,10 @@
             x-text="foundCount > 0 ? foundCount + ' found' : ''"
           ></span>
         </div>
-
-        <!-- progress track -->
         <div
           class="h-[3px] bg-border overflow-hidden"
           role="progressbar"
           :aria-valuenow="progressPct"
-          aria-valuemin="0"
-          aria-valuemax="100"
         >
           <div
             class="h-full bg-brand transition-[width] duration-300"
@@ -295,7 +264,6 @@
             :style="progressTotal > 0 ? `width: ${progressPct}%` : ''"
           ></div>
         </div>
-
         <div class="flex gap-6 mt-2 font-mono text-[11px] text-muted">
           <span
             x-text="progressTotal > 0 ? progressChecked.toLocaleString() + ' / ' + progressTotal.toLocaleString() + ' checked' : 'scanning…'"
@@ -330,7 +298,6 @@
         <div
           class="grid grid-cols-[1fr_auto_1fr] border border-border overflow-hidden mb-3"
         >
-          <!-- You -->
           <div
             class="text-center p-7 transition-colors"
             :class="youWins > oppWins ? 'bg-[#0a1a0a]' : oppWins > youWins ? 'bg-[#160a0a]' : 'bg-surface'"
@@ -349,8 +316,6 @@
               x-text="youWins === 1 ? 'win' : 'wins'"
             ></div>
           </div>
-
-          <!-- Middle -->
           <div
             class="flex flex-col items-center justify-center gap-1.5 px-4 py-5 bg-surface-alt border-x border-border min-w-[76px]"
           >
@@ -374,8 +339,6 @@
               </div>
             </template>
           </div>
-
-          <!-- Opponent -->
           <div
             class="text-center p-7 transition-colors"
             :class="oppWins > youWins ? 'bg-[#0a1a0a]' : youWins > oppWins ? 'bg-[#160a0a]' : 'bg-surface'"
@@ -398,21 +361,20 @@
 
         <!-- TEAMMATE BAR -->
         <div
-          class="bg-surface border border-border border-t-0 px-6 py-3.5 flex flex-wrap items-center gap-x-5 gap-y-2 mb-10"
+          class="bg-surface border border-border border-t-0 px-6 py-3.5 flex flex-wrap items-center gap-x-5 gap-y-2 mb-6"
         >
           <span
             class="font-mono text-[10px] tracking-[2px] uppercase text-muted flex-shrink-0"
             >as teammates</span
           >
-
           <template x-if="teammates.length > 0">
             <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
               <div class="flex gap-3 font-mono text-[12px]">
                 <span class="text-win" x-text="tmWins + 'W'"></span>
                 <span class="text-lose" x-text="tmLosses + 'L'"></span>
-                <template x-if="tmDraws > 0">
-                  <span class="text-muted" x-text="tmDraws + 'D'"></span>
-                </template>
+                <template x-if="tmDraws > 0"
+                  ><span class="text-muted" x-text="tmDraws + 'D'"></span
+                ></template>
               </div>
               <div class="w-px self-stretch bg-border flex-shrink-0"></div>
               <span
@@ -420,169 +382,32 @@
                 :class="tmWr >= 55 ? 'text-win' : tmWr <= 40 ? 'text-lose' : 'text-[#e8e8e8]'"
                 x-text="tmWr + '% wr'"
               ></span>
-
-              <template x-if="bestMap">
-                <div class="flex items-center gap-1.5 font-mono text-[11px]">
-                  <div class="w-px self-stretch bg-border flex-shrink-0"></div>
-                  <span class="text-muted">best</span>
-                  <span
-                    class="font-display tracking-wide text-win text-[13px]"
-                    x-text="bestMap"
-                  ></span>
-                  <span
-                    class="text-muted"
-                    x-text="'(' + Math.round(filteredMapWins[bestMap].w / (filteredMapWins[bestMap].w + filteredMapWins[bestMap].l) * 100) + '%\u00a0·\u00a0' + filteredMapWins[bestMap].w + 'W\u00a0' + filteredMapWins[bestMap].l + 'L)'"
-                  ></span>
-                </div>
-              </template>
-
-              <template x-if="worstMap">
-                <div class="flex items-center gap-1.5 font-mono text-[11px]">
-                  <div class="w-px self-stretch bg-border flex-shrink-0"></div>
-                  <span class="text-muted">worst</span>
-                  <span
-                    class="font-display tracking-wide text-lose text-[13px]"
-                    x-text="worstMap"
-                  ></span>
-                  <span
-                    class="text-muted"
-                    x-text="'(' + Math.round(filteredMapWins[worstMap].w / (filteredMapWins[worstMap].w + filteredMapWins[worstMap].l) * 100) + '%\u00a0·\u00a0' + filteredMapWins[worstMap].w + 'W\u00a0' + filteredMapWins[worstMap].l + 'L)'"
-                  ></span>
-                </div>
-              </template>
             </div>
           </template>
-
-          <template x-if="teammates.length === 0 && !searching">
-            <span class="font-mono text-[12px] text-muted"
+          <template x-if="teammates.length === 0 && !searching"
+            ><span class="font-mono text-[12px] text-muted"
               >no matches found</span
-            >
-          </template>
-
+            ></template
+          >
           <template x-if="teammates.length > 0">
             <span
               class="ml-auto font-mono text-[11px] text-blue bg-[#0a1a2a] border border-[#1a3a5a] px-2.5 py-0.5 rounded-sm"
-              x-text="filteredTeammates.length + (filterMap !== 'all' || filterYear !== 'all' ? ' / ' + teammates.length : '') + ' matches'"
+              x-text="filteredTeammates.length + ' matches'"
             ></span>
           </template>
         </div>
 
-        <!-- ── FILTERS ── -->
-        <template x-if="showResults">
-          <div class="mb-8 flex flex-col gap-3">
-            <div class="flex items-center gap-2 flex-wrap">
-              <span
-                class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-8 flex-shrink-0"
-                >MAP</span
-              >
-              <template x-for="map in availableMaps" :key="map">
-                <button
-                  @click="filterMap = map"
-                  :class="filterMap === map
-                ? 'bg-brand text-white border-brand'
-                : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
-                  class="font-mono text-[10px] tracking-[1px] uppercase border px-2.5 py-1 transition-colors"
-                  x-text="map === 'all' ? 'ALL' : map.replace('de_', '')"
-                ></button>
-              </template>
-            </div>
-            <div class="flex items-center gap-2 flex-wrap">
-              <span
-                class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-8 flex-shrink-0"
-                >YEAR</span
-              >
-              <template x-for="year in availableYears" :key="year">
-                <button
-                  @click="filterYear = String(year)"
-                  :class="filterYear === String(year)
-                ? 'bg-brand text-white border-brand'
-                : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
-                  class="font-mono text-[10px] tracking-[1px] uppercase border px-2.5 py-1 transition-colors"
-                  x-text="year === 'all' ? 'ALL' : year"
-                ></button>
-              </template>
-            </div>
-          </div>
-        </template>
-
-        <!-- ENEMIES SECTION -->
-        <template x-if="enemies.length > 0 || !searching">
-          <div>
-            <div class="flex items-center gap-4 mb-4 mt-10">
-              <div class="font-display text-[22px] tracking-[3px]">ENEMIES</div>
-              <span
-                class="font-mono text-[11px] bg-[#2a0a0a] text-lose border border-[#4a1a1a] px-2.5 py-0.5 rounded-sm"
-                x-text="filteredEnemies.length + (filterMap !== 'all' || filterYear !== 'all' ? ' / ' + enemies.length : '') + ' matches'"
-              ></span>
-              <div class="flex-1 h-px bg-border"></div>
-            </div>
-            <div class="flex flex-col gap-2">
-              <template x-for="m in filteredEnemies" :key="m.match_id">
-                <div x-html="matchCard(m)" class="card-enter contents"></div>
-              </template>
-              <template x-if="enemies.length === 0 && !searching">
-                <div
-                  class="font-mono text-[13px] text-muted py-8 text-center tracking-wide"
-                >
-                  No enemy matches found
-                </div>
-              </template>
-            </div>
-            <div
-              x-show="searching && enemies.length > 0"
-              class="font-mono text-[11px] text-border tracking-[2px] text-center py-3.5 blink"
-            >
-              loading more…
-            </div>
-          </div>
-        </template>
-
-        <!-- TEAMMATES SECTION -->
-        <template x-if="teammates.length > 0 || !searching">
-          <div class="mt-10">
-            <div class="flex items-center gap-4 mb-4">
-              <div class="font-display text-[22px] tracking-[3px]">
-                TEAMMATES
-              </div>
-              <span
-                class="font-mono text-[11px] bg-[#0a1a2a] text-blue border border-[#1a3a5a] px-2.5 py-0.5 rounded-sm"
-                x-text="filteredTeammates.length + (filterMap !== 'all' || filterYear !== 'all' ? ' / ' + teammates.length : '') + ' matches'"
-              ></span>
-              <div class="flex-1 h-px bg-border"></div>
-            </div>
-            <div class="flex flex-col gap-2">
-              <template x-for="m in filteredTeammates" :key="m.match_id">
-                <div x-html="matchCard(m)" class="card-enter contents"></div>
-              </template>
-              <template x-if="teammates.length === 0 && !searching">
-                <div
-                  class="font-mono text-[13px] text-muted py-8 text-center tracking-wide"
-                >
-                  No teammate matches found
-                </div>
-              </template>
-            </div>
-            <div
-              x-show="searching && teammates.length > 0"
-              class="font-mono text-[11px] text-border tracking-[2px] text-center py-3.5 blink"
-            >
-              loading more…
-            </div>
-          </div>
-        </template>
-
-        <!-- BEST LINEUPS SECTION -->
+        <!-- ── BEST LINEUPS (above matches, ranked by Wilson score) ── -->
         <template x-if="bestLineups.length > 0">
-          <div class="mt-10 mb-6">
+          <div class="mb-8">
             <div class="flex items-center gap-4 mb-4">
               <div class="font-display text-[22px] tracking-[3px]">
                 BEST LINEUPS
               </div>
               <span
                 class="font-mono text-[11px] bg-[#1a1200] text-gold border border-[#3a2800] px-2.5 py-0.5 rounded-sm"
+                >ranked by consistency</span
               >
-                5-man · all time
-              </span>
               <div class="flex-1 h-px bg-border"></div>
             </div>
             <div class="flex flex-col gap-2">
@@ -591,7 +416,7 @@
                 :key="lu.roster.join('|')"
               >
                 <div
-                  class="bg-surface border border-border px-5 py-3.5 grid grid-cols-[24px_1fr_auto] gap-4 items-center"
+                  class="bg-surface border border-border px-5 py-3.5 grid grid-cols-[24px_1fr_auto] gap-4 items-center card-enter"
                 >
                   <div
                     class="font-display text-[18px] text-muted leading-none"
@@ -611,14 +436,18 @@
                     <div class="font-mono text-[11px] flex gap-2">
                       <span class="text-win" x-text="lu.w + 'W'"></span>
                       <span class="text-lose" x-text="lu.l + 'L'"></span>
-                      <template x-if="lu.d > 0">
-                        <span class="text-muted" x-text="lu.d + 'D'"></span>
-                      </template>
+                      <template x-if="lu.d > 0"
+                        ><span class="text-muted" x-text="lu.d + 'D'"></span
+                      ></template>
                     </div>
+                    <span
+                      class="font-mono text-[10px] text-muted"
+                      x-text="lu.total + ' games'"
+                    ></span>
                     <div
                       class="font-display text-[20px] leading-none w-14 text-right"
-                      :class="(lu.w/(lu.w+lu.l||1)*100) >= 55 ? 'text-win' : (lu.w/(lu.w+lu.l||1)*100) <= 40 ? 'text-lose' : 'text-[#e8e8e8]'"
-                      x-text="(lu.w + lu.l) > 0 ? Math.round(lu.w / (lu.w + lu.l) * 100) + '%' : 'N/A'"
+                      :class="lu.wr >= 55 ? 'text-win' : lu.wr <= 40 ? 'text-lose' : 'text-[#e8e8e8]'"
+                      x-text="lu.wr + '%'"
                     ></div>
                   </div>
                 </div>
@@ -626,8 +455,201 @@
             </div>
           </div>
         </template>
+
+        <!-- ── FILTERS ── -->
+        <template x-if="showResults">
+          <div class="mb-8 flex flex-col gap-3">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span
+                class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-8 flex-shrink-0"
+                >MAP</span
+              >
+              <template x-for="map in availableMaps" :key="map">
+                <button
+                  @click="filterMap = map"
+                  :class="filterMap === map ? 'bg-brand text-white border-brand' : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
+                  class="font-mono text-[10px] tracking-[1px] uppercase border px-2.5 py-1 transition-colors"
+                  x-text="map === 'all' ? 'ALL' : map.replace('de_', '')"
+                ></button>
+              </template>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span
+                class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-8 flex-shrink-0"
+                >YEAR</span
+              >
+              <template x-for="year in availableYears" :key="year">
+                <button
+                  @click="filterYear = String(year)"
+                  :class="filterYear === String(year) ? 'bg-brand text-white border-brand' : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
+                  class="font-mono text-[10px] tracking-[1px] uppercase border px-2.5 py-1 transition-colors"
+                  x-text="year === 'all' ? 'ALL' : year"
+                ></button>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <!-- ── ENEMIES (native Alpine templates — no x-html) ── -->
+        <template x-if="enemies.length > 0 || !searching">
+          <div>
+            <div class="flex items-center gap-4 mb-4 mt-6">
+              <div class="font-display text-[22px] tracking-[3px]">ENEMIES</div>
+              <span
+                class="font-mono text-[11px] bg-[#2a0a0a] text-lose border border-[#4a1a1a] px-2.5 py-0.5 rounded-sm"
+                x-text="filteredEnemies.length + ' matches'"
+              ></span>
+              <div class="flex-1 h-px bg-border"></div>
+            </div>
+            <div class="flex flex-col gap-2">
+              <template x-for="m in pagedEnemies" :key="m.match_id">
+                <a
+                  :href="m.faceit_url || '#'"
+                  target="_blank"
+                  rel="noopener"
+                  class="bg-surface border border-border px-5 py-3.5 grid grid-cols-[72px_1fr_auto] gap-4 items-center transition-colors hover:border-brand no-underline text-[#e8e8e8] card-enter block"
+                >
+                  <div class="font-mono text-[11px] text-muted leading-relaxed">
+                    <span x-text="matchDate(m)[0]"></span><br />
+                    <span x-text="matchDate(m)[1]"></span>
+                  </div>
+                  <div class="flex flex-col gap-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span
+                        class="font-display text-lg tracking-widest"
+                        x-text="matchMap(m)"
+                      ></span>
+                      <template x-if="matchIsTournament(m)">
+                        <span
+                          class="font-mono text-[9px] tracking-[1px] uppercase text-gold bg-[#1a1200] border border-[#3a2800] px-1.5 py-0.5 rounded-sm truncate max-w-[200px]"
+                          x-text="'🏆 ' + matchTournamentLabel(m)"
+                        ></span>
+                      </template>
+                    </div>
+                    <div class="font-mono text-[11px] text-muted truncate">
+                      <template
+                        x-for="(p, pi) in matchRosterYours(m)"
+                        :key="p.name + pi"
+                      >
+                        <span
+                          ><span :class="p.cls" x-text="p.name"></span
+                          ><span x-show="pi < matchRosterYours(m).length - 1"
+                            >,
+                          </span></span
+                        >
+                      </template>
+                    </div>
+                  </div>
+                  <div class="text-right flex-shrink-0">
+                    <div
+                      class="font-display text-[22px] tracking-widest leading-none"
+                      :class="matchScore(m).cls"
+                      x-text="matchScore(m).label"
+                    ></div>
+                    <div
+                      class="font-mono text-[10px] tracking-[1px] uppercase mt-0.5"
+                      :class="matchScore(m).win === true ? 'text-win' : matchScore(m).win === false ? 'text-lose' : 'text-muted'"
+                      x-text="matchScore(m).win === true ? 'win' : matchScore(m).win === false ? 'loss' : 'draw'"
+                    ></div>
+                  </div>
+                </a>
+              </template>
+              <template x-if="filteredEnemies.length > enemiesShown">
+                <button
+                  @click="enemiesShown += 25"
+                  class="font-mono text-[11px] text-muted border border-border py-2 text-center hover:border-brand hover:text-[#e8e8e8] transition-colors"
+                >
+                  Show more (<span
+                    x-text="filteredEnemies.length - enemiesShown"
+                  ></span>
+                  remaining)
+                </button>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <!-- ── TEAMMATES ── -->
+        <template x-if="teammates.length > 0 || !searching">
+          <div class="mt-10">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="font-display text-[22px] tracking-[3px]">
+                TEAMMATES
+              </div>
+              <span
+                class="font-mono text-[11px] bg-[#0a1a2a] text-blue border border-[#1a3a5a] px-2.5 py-0.5 rounded-sm"
+                x-text="filteredTeammates.length + ' matches'"
+              ></span>
+              <div class="flex-1 h-px bg-border"></div>
+            </div>
+            <div class="flex flex-col gap-2">
+              <template x-for="m in pagedTeammates" :key="m.match_id">
+                <a
+                  :href="m.faceit_url || '#'"
+                  target="_blank"
+                  rel="noopener"
+                  class="bg-surface border border-border px-5 py-3.5 grid grid-cols-[72px_1fr_auto] gap-4 items-center transition-colors hover:border-brand no-underline text-[#e8e8e8] card-enter block"
+                >
+                  <div class="font-mono text-[11px] text-muted leading-relaxed">
+                    <span x-text="matchDate(m)[0]"></span><br />
+                    <span x-text="matchDate(m)[1]"></span>
+                  </div>
+                  <div class="flex flex-col gap-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span
+                        class="font-display text-lg tracking-widest"
+                        x-text="matchMap(m)"
+                      ></span>
+                      <template x-if="matchIsTournament(m)">
+                        <span
+                          class="font-mono text-[9px] tracking-[1px] uppercase text-gold bg-[#1a1200] border border-[#3a2800] px-1.5 py-0.5 rounded-sm truncate max-w-[200px]"
+                          x-text="'🏆 ' + matchTournamentLabel(m)"
+                        ></span>
+                      </template>
+                    </div>
+                    <div class="font-mono text-[11px] text-muted truncate">
+                      <template
+                        x-for="(p, pi) in matchRosterYours(m)"
+                        :key="p.name + pi"
+                      >
+                        <span
+                          ><span :class="p.cls" x-text="p.name"></span
+                          ><span x-show="pi < matchRosterYours(m).length - 1"
+                            >,
+                          </span></span
+                        >
+                      </template>
+                    </div>
+                  </div>
+                  <div class="text-right flex-shrink-0">
+                    <div
+                      class="font-display text-[22px] tracking-widest leading-none"
+                      :class="matchScore(m).cls"
+                      x-text="matchScore(m).label"
+                    ></div>
+                    <div
+                      class="font-mono text-[10px] tracking-[1px] uppercase mt-0.5"
+                      :class="matchScore(m).win === true ? 'text-win' : matchScore(m).win === false ? 'text-lose' : 'text-muted'"
+                      x-text="matchScore(m).win === true ? 'win' : matchScore(m).win === false ? 'loss' : 'draw'"
+                    ></div>
+                  </div>
+                </a>
+              </template>
+              <template x-if="filteredTeammates.length > teammatesShown">
+                <button
+                  @click="teammatesShown += 25"
+                  class="font-mono text-[11px] text-muted border border-border py-2 text-center hover:border-brand hover:text-[#e8e8e8] transition-colors"
+                >
+                  Show more (<span
+                    x-text="filteredTeammates.length - teammatesShown"
+                  ></span>
+                  remaining)
+                </button>
+              </template>
+            </div>
+          </div>
+        </template>
       </div>
-      <!-- /player results -->
 
       <!-- ── MATCHROOM SECTION ── -->
       <div x-show="mrDone || mrSearching || mrError" x-transition class="pb-8">
@@ -638,9 +660,22 @@
         ></div>
         <div
           x-show="mrError"
-          class="font-mono text-[11px] text-lose mb-6"
-          x-text="mrError"
-        ></div>
+          class="flex gap-3 items-start bg-[#1a0a0a] border border-[#4a1a1a] text-lose font-mono text-[13px] p-4 mb-6"
+          role="alert"
+        >
+          <svg
+            class="size-4 mt-[1px] flex-shrink-0"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          <span x-text="mrError"></span>
+        </div>
 
         <template x-if="mrDone && Object.keys(mrFactions).length">
           <div>
@@ -658,7 +693,7 @@
               </div>
             </div>
 
-            <!-- ── MAP ADVANTAGE ── -->
+            <!-- MAP ADVANTAGE -->
             <template
               x-if="mrMapRecommendation.length > 0 && mrFactionKeys.length >= 2"
             >
@@ -667,22 +702,17 @@
                   <div class="font-display text-[20px] tracking-[3px]">
                     MAP ADVANTAGE
                   </div>
-                  <!-- A/B perspective toggle -->
                   <div class="flex gap-1 ml-2">
                     <button
                       @click="mrPerspective = 0"
-                      :class="mrPerspective === 0
-                        ? 'bg-brand text-white border-brand'
-                        : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
+                      :class="mrPerspective === 0 ? 'bg-brand text-white border-brand' : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
                       class="font-mono text-[10px] tracking-[1px] uppercase border px-2.5 py-1 transition-colors"
                     >
                       TEAM A
                     </button>
                     <button
                       @click="mrPerspective = 1"
-                      :class="mrPerspective === 1
-                        ? 'bg-brand text-white border-brand'
-                        : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
+                      :class="mrPerspective === 1 ? 'bg-brand text-white border-brand' : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
                       class="font-mono text-[10px] tracking-[1px] uppercase border px-2.5 py-1 transition-colors"
                     >
                       TEAM B
@@ -690,8 +720,6 @@
                   </div>
                   <div class="flex-1 h-px bg-border"></div>
                 </div>
-
-                <!-- Team A/B labels -->
                 <div class="grid grid-cols-2 gap-2 mb-3">
                   <div
                     class="flex items-center gap-2 font-mono text-[10px] tracking-wide"
@@ -712,8 +740,6 @@
                     ></span>
                   </div>
                 </div>
-
-                <!-- Map rows -->
                 <div class="flex flex-col gap-2">
                   <template
                     x-for="(row, idx) in mrMapRecommendation"
@@ -723,7 +749,6 @@
                       class="bg-surface border border-border overflow-hidden"
                       :class="idx === 0 ? 'border-win/30' : idx === mrMapRecommendation.length - 1 ? 'border-lose/30' : ''"
                     >
-                      <!-- Map header bar -->
                       <div
                         class="flex items-center justify-between px-4 py-2 border-b border-border/50"
                         :class="idx === 0 ? 'bg-[#0a1a0a]' : idx === mrMapRecommendation.length - 1 ? 'bg-[#1a0a0a]' : 'bg-surface-alt'"
@@ -733,29 +758,26 @@
                             class="font-display text-[17px] tracking-widest"
                             x-text="mrMapName(row.id)"
                           ></span>
-                          <template x-if="idx === 0">
-                            <span
+                          <template x-if="idx === 0"
+                            ><span
                               class="font-mono text-[9px] tracking-[1px] uppercase text-win bg-[#0a2a0a] border border-[#1a4a1a] px-1.5 py-0.5 rounded-sm"
                               >PICK</span
-                            >
-                          </template>
+                            ></template
+                          >
                           <template
                             x-if="idx === mrMapRecommendation.length - 1"
-                          >
-                            <span
+                            ><span
                               class="font-mono text-[9px] tracking-[1px] uppercase text-lose bg-[#2a0a0a] border border-[#4a1a1a] px-1.5 py-0.5 rounded-sm"
                               >BAN</span
-                            >
-                          </template>
+                            ></template
+                          >
                         </div>
                         <div class="flex items-center gap-3">
-                          <!-- Team WRs side by side -->
                           <span
                             class="font-mono text-[11px]"
                             :style="row.f1wr !== null ? `color:${mrWrColor(row.f1wr)}` : 'color:#444'"
                             x-text="(row.f1wr !== null ? row.f1wr + '%' : '—') + ' vs ' + (row.f2wr !== null ? row.f2wr + '%' : '—')"
                           ></span>
-                          <!-- Delta badge -->
                           <span
                             class="font-mono text-[13px] font-medium min-w-[40px] text-right"
                             :class="row.delta > 0 ? 'text-win' : row.delta < 0 ? 'text-lose' : 'text-muted'"
@@ -768,10 +790,7 @@
                           ></span>
                         </div>
                       </div>
-
-                      <!-- Two-column player breakdown -->
                       <div class="grid grid-cols-2 divide-x divide-border/50">
-                        <!-- Team A players -->
                         <div class="px-3 py-2">
                           <template
                             x-for="c in row.f1contribs"
@@ -795,27 +814,26 @@
                               >
                                 <div
                                   class="h-full rounded-full"
-                                  :style="`width:${Math.min(c.wr, 100)}%; background:${mrWrColor(c.wr)}`"
+                                  :style="`width:${Math.min(c.wr,100)}%;background:${mrWrColor(c.wr)}`"
                                 ></div>
                               </div>
                               <span
                                 class="font-mono text-[9px] text-right"
                                 :style="`color:${mrWrColor(c.wr)}`"
-                                x-text="c.wr + '%'"
+                                x-text="c.wr+'%'"
                               ></span>
                               <span
                                 class="font-mono text-[8px] text-muted text-right"
-                                x-text="c.matches + 'm'"
+                                x-text="c.matches+'m'"
                               ></span>
                             </div>
                           </template>
-                          <template x-if="row.f1contribs.length === 0">
-                            <div class="font-mono text-[9px] text-muted py-1">
+                          <template x-if="row.f1contribs.length === 0"
+                            ><div class="font-mono text-[9px] text-muted py-1">
                               no data
-                            </div>
-                          </template>
+                            </div></template
+                          >
                         </div>
-                        <!-- Team B players -->
                         <div class="px-3 py-2">
                           <template
                             x-for="c in row.f2contribs"
@@ -839,49 +857,29 @@
                               >
                                 <div
                                   class="h-full rounded-full"
-                                  :style="`width:${Math.min(c.wr, 100)}%; background:${mrWrColor(c.wr)}`"
+                                  :style="`width:${Math.min(c.wr,100)}%;background:${mrWrColor(c.wr)}`"
                                 ></div>
                               </div>
                               <span
                                 class="font-mono text-[9px] text-right"
                                 :style="`color:${mrWrColor(c.wr)}`"
-                                x-text="c.wr + '%'"
+                                x-text="c.wr+'%'"
                               ></span>
                               <span
                                 class="font-mono text-[8px] text-muted text-right"
-                                x-text="c.matches + 'm'"
+                                x-text="c.matches+'m'"
                               ></span>
                             </div>
                           </template>
-                          <template x-if="row.f2contribs.length === 0">
-                            <div class="font-mono text-[9px] text-muted py-1">
+                          <template x-if="row.f2contribs.length === 0"
+                            ><div class="font-mono text-[9px] text-muted py-1">
                               no data
-                            </div>
-                          </template>
+                            </div></template
+                          >
                         </div>
                       </div>
                     </div>
                   </template>
-                </div>
-
-                <!-- Column labels -->
-                <div class="grid grid-cols-2 gap-2 mt-2">
-                  <div
-                    class="font-mono text-[10px] text-muted tracking-wide text-center"
-                  >
-                    <span class="text-brand">A</span> ·
-                    <span
-                      x-text="mrFactions[mrFactionKeys[0]]?.name || mrFactionKeys[0]"
-                    ></span>
-                  </div>
-                  <div
-                    class="font-mono text-[10px] text-muted tracking-wide text-center"
-                  >
-                    <span class="text-blue">B</span> ·
-                    <span
-                      x-text="mrFactions[mrFactionKeys[1]]?.name || mrFactionKeys[1]"
-                    ></span>
-                  </div>
                 </div>
                 <div
                   class="font-mono text-[10px] text-muted mt-3 tracking-wide"
@@ -908,6 +906,5 @@
         DIDYOUFACEIT.COM — FACEIT Data API v4 &nbsp;·&nbsp; CS2
       </footer>
     </div>
-    <!-- /container -->
   </body>
 </html>
