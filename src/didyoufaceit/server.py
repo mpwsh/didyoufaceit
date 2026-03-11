@@ -64,6 +64,11 @@ async def index():
     return FileResponse(str(_static_dir / "index.html"))
 
 
+@app.get("/favicon.ico")
+async def favicon():
+    return JSONResponse(content={}, status_code=204)
+
+
 @app.get("/api/search")
 async def search(
     you: str = Query("", alias="you"),
@@ -90,7 +95,11 @@ async def search(
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -118,7 +127,11 @@ async def matchroom(id: str = Query("", alias="id")):
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -15,12 +16,17 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://didyou:didyou@localh
 STATS_TTL_SECONDS = 3 * 24 * 3600  # 3 days
 
 _pool: asyncpg.Pool | None = None
+_pool_lock = asyncio.Lock()
 
 
 async def _get_pool() -> asyncpg.Pool:
     global _pool
-    if _pool is None:
-        _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
+    if _pool is not None:
+        return _pool
+    async with _pool_lock:
+        # Double-check after acquiring lock
+        if _pool is None:
+            _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=20)
     return _pool
 
 
