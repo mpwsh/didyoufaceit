@@ -66,7 +66,9 @@ async def index():
 
 @app.get("/favicon.ico")
 async def favicon():
-    return JSONResponse(content={}, status_code=204)
+    from starlette.responses import Response
+
+    return Response(status_code=204)
 
 
 @app.get("/api/search")
