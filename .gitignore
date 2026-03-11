@@ -1,4 +1,4 @@
-src/didyoufaceit/__pycache__/
+src/didyoufaceit/__pycache__
 *.pyc
 *.pyo
 .venv/

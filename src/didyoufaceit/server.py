@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from .api import FaceitClient
 from .search import stream_search
 from .matchroom import stream_matchroom
-from .cache import init_db
+from .cache import init_db, close_db
 
 # Load .env from project root if present
 _env_path = Path(__file__).parent.parent.parent.parent / ".env"
@@ -46,6 +46,8 @@ async def lifespan(app: FastAPI):
     await init_db()
     log.info("Database initialized")
     yield
+    await close_db()
+    log.info("Database pool closed")
 
 
 app = FastAPI(title="didyou.gg", lifespan=lifespan)
@@ -133,10 +135,12 @@ def run():
     """Dev server entrypoint."""
     import uvicorn
     port = int(os.environ.get("PORT", 5000))
-    log.info("Starting faceit-finder on http://0.0.0.0:%d", port)
+    log.info("Starting didyoufaceit on http://0.0.0.0:%d", port)
     uvicorn.run(
         "didyoufaceit.server:app",
         host="0.0.0.0",
         port=port,
         reload=True,
+        reload_dirs=["src"],
+        reload_excludes=["*.db", "*.db-wal", "*.db-shm", "*.pyc", "__pycache__"],
     )
