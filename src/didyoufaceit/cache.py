@@ -55,6 +55,21 @@ def init_db() -> None:
                 scanned_at      INTEGER DEFAULT (strftime('%s','now')),
                 total_matches   INTEGER DEFAULT 0
             );
+
+            -- Cached lifetime stats from /players/{id}/stats/cs2
+            -- TTL-based: re-fetch after stats_ttl_seconds
+            CREATE TABLE IF NOT EXISTS player_stats_cache (
+                player_id    TEXT PRIMARY KEY,
+                stats_json   TEXT NOT NULL,
+                fetched_at   INTEGER DEFAULT (strftime('%s','now'))
+            );
+
+            -- Cached matchroom roster+voting (immutable once match created)
+            CREATE TABLE IF NOT EXISTS matchroom_cache (
+                match_id      TEXT PRIMARY KEY,
+                data_json     TEXT NOT NULL,
+                fetched_at    INTEGER DEFAULT (strftime('%s','now'))
+            );
         """)
 
         # ── migrations for existing installs ──────────────────────────────────
@@ -215,3 +230,56 @@ def get_db_stats() -> dict:
         "known_players":     players,
         "player_match_links": player_links,
     }
+
+
+# ── player stats cache ────────────────────────────────────────────────────────
+
+STATS_TTL_SECONDS = 3 * 24 * 3600  # 3 days
+
+
+def get_cached_player_stats(player_id: str) -> dict | None:
+    """Return cached lifetime stats if fresh (within TTL), else None."""
+    import time
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT stats_json, fetched_at FROM player_stats_cache WHERE player_id = ?",
+            (player_id,),
+        ).fetchone()
+    if not row:
+        return None
+    age = int(time.time()) - (row["fetched_at"] or 0)
+    if age > STATS_TTL_SECONDS:
+        return None  # stale
+    return json.loads(row["stats_json"])
+
+
+def save_player_stats(player_id: str, stats: dict) -> None:
+    """Cache lifetime stats with current timestamp."""
+    with _connect() as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO player_stats_cache (player_id, stats_json, fetched_at)
+            VALUES (?, ?, strftime('%s','now'))
+        """, (player_id, json.dumps(stats)))
+
+
+# ── matchroom cache ───────────────────────────────────────────────────────────
+
+def get_cached_matchroom(match_id: str) -> dict | None:
+    """Return cached matchroom data (roster + voting). Never expires (immutable)."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT data_json FROM matchroom_cache WHERE match_id = ?",
+            (match_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return json.loads(row["data_json"])
+
+
+def save_matchroom(match_id: str, data: dict) -> None:
+    """Cache matchroom data permanently."""
+    with _connect() as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO matchroom_cache (match_id, data_json, fetched_at)
+            VALUES (?, ?, strftime('%s','now'))
+        """, (match_id, json.dumps(data)))
