@@ -1,6 +1,15 @@
 """Basic smoke tests."""
 
-from didyoufaceit.cache import init_db
+import pytest
+
+from didyoufaceit.cache import close_db, init_db
+
+
+@pytest.fixture(autouse=True)
+async def _cleanup_pool():
+    """Reset the connection pool between tests."""
+    yield
+    await close_db()
 
 
 async def test_init_db():
