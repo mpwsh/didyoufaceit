@@ -11,8 +11,8 @@ from .cache import (
     get_cached_match,
     get_nicknames,
     get_player_match_ids,
+    get_player_scan_info,
     init_db,
-    is_player_fully_scanned,
     link_player_match,
     link_player_matches_bulk,
     mark_player_scanned,
@@ -27,7 +27,9 @@ log = logging.getLogger(__name__)
 GAME = "cs2"
 PAGE_SIZE = 100
 MAX_PAGES = 10
-BATCH_SIZE = 10  # parallel match fetches per batch
+BATCH_SIZE = 10
+SCAN_TTL_SECONDS = 6 * 3600  # Re-fetch recent history if last scan > 6 hours ago
+RECENT_PAGES = 3  # Only fetch last ~300 matches for incremental refresh  # parallel match fetches per batch
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -118,6 +120,67 @@ async def _fetch_player_history(client: FaceitClient, player_id: str, nickname: 
     return match_ids, events
 
 
+async def _fetch_recent_history(client: FaceitClient, player_id: str, nickname: str = ""):
+    """Fetch only the most recent matches (for incremental refresh)."""
+    match_ids: set[str] = set()
+    events: list[dict] = []
+    for page in range(RECENT_PAGES):
+        events.append({"type": "status", "msg": f"Checking recent matches for {nickname}… ({len(match_ids)} found)"})
+        history = await client.get_match_history(
+            player_id,
+            game=GAME,
+            offset=page * PAGE_SIZE,
+            limit=PAGE_SIZE,
+        )
+        items = history.get("items", [])
+        if not items:
+            break
+        match_ids.update(item["match_id"] for item in items)
+        if len(items) < PAGE_SIZE:
+            break
+    return match_ids, events
+
+
+async def _collect_player_history(client, player_id, nickname):
+    """
+    Smart history collection:
+    - Never scanned → full scan
+    - Scanned recently (< SCAN_TTL) → use cache only
+    - Scanned but stale (> SCAN_TTL) → cached + fetch recent matches
+    Returns (match_ids, events, was_cached)
+    """
+    import time
+
+    scan_info = await get_player_scan_info(player_id)
+
+    if scan_info is None:
+        # Never scanned — full scan
+        match_ids, events = await _fetch_player_history(client, player_id, nickname)
+        await link_player_matches_bulk(player_id, list(match_ids))
+        await mark_player_scanned(player_id, len(match_ids))
+        events.append({"type": "status", "msg": f"Got {len(match_ids):,} matches for {nickname}"})
+        return match_ids, events, False
+
+    age = int(time.time()) - (scan_info["scanned_at"] or 0)
+    cached_ids = await get_player_match_ids(player_id)
+
+    if age < SCAN_TTL_SECONDS:
+        # Fresh — use cache
+        msg = f"Loaded {len(cached_ids):,} matches for {nickname} from cache"
+        return cached_ids, [{"type": "status", "msg": msg}], True
+
+    # Stale — incremental refresh (fetch recent ~300 matches + merge)
+    recent_ids, events = await _fetch_recent_history(client, player_id, nickname)
+    new_ids = recent_ids - cached_ids
+    if new_ids:
+        await link_player_matches_bulk(player_id, list(new_ids))
+        events.append({"type": "status", "msg": f"Found {len(new_ids)} new matches for {nickname}"})
+    all_ids = cached_ids | recent_ids
+    await mark_player_scanned(player_id, len(all_ids))
+    events.append({"type": "status", "msg": f"Total {len(all_ids):,} matches for {nickname}"})
+    return all_ids, events, len(new_ids) == 0
+
+
 async def _fetch_single_match(client: FaceitClient, match_id: str) -> tuple[str, dict | None]:
     """Fetch a single match from API. Returns (match_id, raw_data | None)."""
     try:
@@ -186,31 +249,14 @@ async def stream_search(
     await upsert_player(your_id, your_nick)
     await upsert_player(opp_id, opp_nick)
 
-    your_scanned = await is_player_fully_scanned(your_id)
-    opp_scanned = await is_player_fully_scanned(opp_id)
+    # ── Step 1: history collection (smart: full scan / cache / incremental) ──
+    your_match_ids, your_events, your_cached = await _collect_player_history(client, your_id, your_nick)
+    for ev in your_events:
+        yield ev
 
-    # ── Step 1: history collection ────────────────────────────────────────────
-    if your_scanned:
-        your_match_ids = await get_player_match_ids(your_id)
-        yield {"type": "status", "msg": f"Loaded {len(your_match_ids):,} matches for {your_nick} from cache"}
-    else:
-        your_match_ids, events = await _fetch_player_history(client, your_id, your_nick)
-        for ev in events:
-            yield ev
-        await link_player_matches_bulk(your_id, list(your_match_ids))
-        await mark_player_scanned(your_id, len(your_match_ids))
-        yield {"type": "status", "msg": f"Got {len(your_match_ids):,} matches for {your_nick}"}
-
-    if opp_scanned:
-        opp_match_ids = await get_player_match_ids(opp_id)
-        yield {"type": "status", "msg": f"Loaded {len(opp_match_ids):,} matches for {opp_nick} from cache"}
-    else:
-        opp_match_ids, events = await _fetch_player_history(client, opp_id, opp_nick)
-        for ev in events:
-            yield ev
-        await link_player_matches_bulk(opp_id, list(opp_match_ids))
-        await mark_player_scanned(opp_id, len(opp_match_ids))
-        yield {"type": "status", "msg": f"Got {len(opp_match_ids):,} matches for {opp_nick}"}
+    opp_match_ids, opp_events, opp_cached = await _collect_player_history(client, opp_id, opp_nick)
+    for ev in opp_events:
+        yield ev
 
     all_match_ids = list(your_match_ids | opp_match_ids)
     total = len(all_match_ids)
@@ -268,9 +314,12 @@ async def stream_search(
             found_count += 1
             same_team = your_team == opp_team
 
-            # Fetch real round score for confirmed shared matches
+            # Fetch real round score if we only have series scores (0/1, 1/0)
             score = cached["score"]
-            if cached.get("_needs_stats"):
+            score_vals = [v for v in score.values() if isinstance(v, int | float)]
+            needs_real_score = cached.get("_needs_stats") or (score_vals and max(score_vals) <= 1)
+
+            if needs_real_score:
                 try:
                     stats = await client.get_match_stats(mid)
                     round_score = _round_score_from_stats(stats, score)
@@ -313,5 +362,5 @@ async def stream_search(
         "total_found": found_count,
         "total_checked": total,
         "new_fetched": new_fetched,
-        "cached": your_scanned and opp_scanned,
+        "cached": your_cached and opp_cached,
     }

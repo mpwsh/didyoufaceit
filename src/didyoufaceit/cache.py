@@ -242,6 +242,15 @@ async def is_player_fully_scanned(player_id: str) -> bool:
     return row is not None
 
 
+async def get_player_scan_info(player_id: str) -> dict | None:
+    """Return {scanned_at, total_matches} or None if never scanned."""
+    pool = await _get_pool()
+    row = await pool.fetchrow("SELECT scanned_at, total_matches FROM player_scans WHERE player_id = $1", player_id)
+    if not row:
+        return None
+    return {"scanned_at": row["scanned_at"], "total_matches": row["total_matches"]}
+
+
 async def mark_player_scanned(player_id: str, total_matches: int) -> None:
     pool = await _get_pool()
     await pool.execute(

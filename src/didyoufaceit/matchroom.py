@@ -55,7 +55,25 @@ def _parse_map_stats(segments: list[dict]) -> dict[str, dict]:
             continue
         if matches == 0:
             continue
-        result[map_id] = {"wins": wins, "matches": matches, "wr": round(wins / matches * 100)}
+
+        # Parse additional stats (all are strings in the API)
+        def _float(key, default=0.0):
+            try:
+                return round(float(stats.get(key, default)), 2)
+            except (ValueError, TypeError):
+                return default
+
+        result[map_id] = {
+            "wins": wins,
+            "matches": matches,
+            "wr": round(wins / matches * 100),
+            "kd": _float("Average K/D Ratio"),
+            "avg_kills": _float("Average Kills"),
+            "avg_deaths": _float("Average Deaths"),
+            "hs_pct": _float("Average Headshots %"),
+            "win_streak": int(stats.get("Current Win Streak", 0) or 0),
+            "longest_streak": int(stats.get("Longest Win Streak", 0) or 0),
+        }
     return result
 
 

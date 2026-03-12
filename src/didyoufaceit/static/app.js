@@ -52,18 +52,43 @@ function wrColor(wr) {
 
 function eloToLevel(elo) {
   if (!elo || elo <= 0) return 0;
-  const thresholds = [801, 951, 1101, 1251, 1401, 1551, 1701, 1851, 2001];
-  for (let i = 0; i < thresholds.length; i++) {
-    if (elo < thresholds[i]) return i + 1;
-  }
+  if (elo <= 500) return 1;
+  if (elo <= 750) return 2;
+  if (elo <= 900) return 3;
+  if (elo <= 1050) return 4;
+  if (elo <= 1200) return 5;
+  if (elo <= 1350) return 6;
+  if (elo <= 1530) return 7;
+  if (elo <= 1750) return 8;
+  if (elo <= 2000) return 9;
   return 10;
 }
 
 function levelColor(lvl) {
-  if (lvl >= 10) return "#ff5500";
-  if (lvl >= 7) return "#f59e0b";
-  if (lvl >= 4) return "#e8e8e8";
-  return "#666666";
+  if (lvl >= 10) return "#ff2248"; // red
+  if (lvl >= 8) return "#ff6c20"; // orange
+  if (lvl >= 4) return "#ffcd25"; // yellow
+  if (lvl >= 2) return "#47e36e"; // green
+  return "#CCCCCC"; // grey
+}
+
+function kdColor(kd) {
+  if (kd >= 1.2) return "#22c55e";
+  if (kd >= 1.0) return "#f59e0b";
+  return "#ef4444";
+}
+
+// Composite player-map strength score
+// Combines confidence-adjusted WR (Wilson), K/D impact, and level reliability
+function playerMapStrength(wins, matches, kd, level) {
+  if (matches === 0) return 0;
+  // Wilson lower bound — confidence-adjusted win rate (penalizes low samples)
+  const wr = wilsonScore(wins, matches);
+  // K/D factor: scales 0.7–1.15 (bounded so a 2.0 K/D doesn't dominate)
+  const kdFactor = 0.7 + 0.3 * Math.min(kd / 1.3, 1.5);
+  // Level factor: slight boost for proven players (0.85–1.0)
+  const lvlFactor = 0.85 + 0.15 * (Math.min(level, 10) / 10);
+  return wr * kdFactor * lvlFactor;
 }
 
 function wilsonScore(wins, total) {
@@ -134,6 +159,7 @@ function app() {
     // filters
     filterMap: "all",
     filterYear: "all",
+    filterMode: "all",
 
     // pagination
     enemiesShown: 25,
@@ -175,27 +201,32 @@ function app() {
         : 0;
     },
 
+    // These update live during streaming
     get availableMaps() {
-      return this._memo("availableMaps", function () {
-        const maps = new Set(
-          [...this.enemies, ...this.teammates]
-            .map((m) => m.map)
-            .filter(Boolean),
-        );
-        return ["all", ...Array.from(maps).sort()];
-      });
+      const maps = new Set(
+        [...this.enemies, ...this.teammates].map((m) => m.map).filter(Boolean),
+      );
+      return ["all", ...Array.from(maps).sort()];
     },
     get availableYears() {
-      return this._memo("availableYears", function () {
-        const years = new Set(
-          [...this.enemies, ...this.teammates]
-            .map((m) =>
-              m.started_at ? new Date(m.started_at * 1000).getFullYear() : null,
-            )
-            .filter(Boolean),
-        );
-        return ["all", ...Array.from(years).sort((a, b) => b - a)];
-      });
+      const years = new Set(
+        [...this.enemies, ...this.teammates]
+          .map((m) =>
+            m.started_at ? new Date(m.started_at * 1000).getFullYear() : null,
+          )
+          .filter(Boolean),
+      );
+      return ["all", ...Array.from(years).sort((a, b) => b - a)];
+    },
+    get availableModes() {
+      const modes = new Set(
+        [...this.enemies, ...this.teammates].map((m) => {
+          if (!m.competition_type || m.competition_type === "matchmaking")
+            return "matchmaking";
+          return m.competition_name || m.competition_type;
+        }),
+      );
+      return ["all", ...Array.from(modes).sort()];
     },
 
     _passes(m) {
@@ -207,22 +238,27 @@ function app() {
             parseInt(this.filterYear))
       )
         return false;
+      if (this.filterMode !== "all") {
+        const mode =
+          !m.competition_type || m.competition_type === "matchmaking"
+            ? "matchmaking"
+            : m.competition_name || m.competition_type;
+        if (mode !== this.filterMode) return false;
+      }
       return true;
     },
 
+    // These are NOT memoized — they need to update live as matches stream in
+    // They're cheap: filter + sort on the already-in-memory array, sliced to 25 for DOM
     get filteredEnemies() {
-      return this._memo("fE", function () {
-        return [...this.enemies]
-          .filter((m) => this._passes(m))
-          .sort((a, b) => b.started_at - a.started_at);
-      });
+      return [...this.enemies]
+        .filter((m) => this._passes(m))
+        .sort((a, b) => b.started_at - a.started_at);
     },
     get filteredTeammates() {
-      return this._memo("fT", function () {
-        return [...this.teammates]
-          .filter((m) => this._passes(m))
-          .sort((a, b) => b.started_at - a.started_at);
-      });
+      return [...this.teammates]
+        .filter((m) => this._passes(m))
+        .sort((a, b) => b.started_at - a.started_at);
     },
     get pagedEnemies() {
       return this.filteredEnemies.slice(0, this.enemiesShown);
@@ -231,48 +267,34 @@ function app() {
       return this.filteredTeammates.slice(0, this.teammatesShown);
     },
 
-    // Win/loss counts — computed once from cached filteredEnemies/filteredTeammates
+    // These update live during streaming (cheap — just count filtered array)
     get youWins() {
-      return this._memo("yW", function () {
-        return this.filteredEnemies.filter(
-          (m) => scoreInfo(m.score).win === true,
-        ).length;
-      });
+      return this.filteredEnemies.filter((m) => scoreInfo(m.score).win === true)
+        .length;
     },
     get oppWins() {
-      return this._memo("oW", function () {
-        return this.filteredEnemies.filter(
-          (m) => scoreInfo(m.score).win === false,
-        ).length;
-      });
+      return this.filteredEnemies.filter(
+        (m) => scoreInfo(m.score).win === false,
+      ).length;
     },
     get draws() {
-      return this._memo("dr", function () {
-        return this.filteredEnemies.filter(
-          (m) => scoreInfo(m.score).win === null,
-        ).length;
-      });
+      return this.filteredEnemies.filter((m) => scoreInfo(m.score).win === null)
+        .length;
     },
     get tmWins() {
-      return this._memo("tW", function () {
-        return this.filteredTeammates.filter(
-          (m) => scoreInfo(m.score).win === true,
-        ).length;
-      });
+      return this.filteredTeammates.filter(
+        (m) => scoreInfo(m.score).win === true,
+      ).length;
     },
     get tmLosses() {
-      return this._memo("tL", function () {
-        return this.filteredTeammates.filter(
-          (m) => scoreInfo(m.score).win === false,
-        ).length;
-      });
+      return this.filteredTeammates.filter(
+        (m) => scoreInfo(m.score).win === false,
+      ).length;
     },
     get tmDraws() {
-      return this._memo("tD", function () {
-        return this.filteredTeammates.filter(
-          (m) => scoreInfo(m.score).win === null,
-        ).length;
-      });
+      return this.filteredTeammates.filter(
+        (m) => scoreInfo(m.score).win === null,
+      ).length;
     },
     get tmWr() {
       const t = this.tmWins + this.tmLosses;
@@ -351,6 +373,14 @@ function app() {
       });
     },
 
+    // Safe map stats label — avoids undefined access race condition
+    mapStatsLabel(map) {
+      const s = this.filteredMapWins[map];
+      if (!s) return "";
+      const wr = s.w + s.l > 0 ? Math.round((s.w / (s.w + s.l)) * 100) : 0;
+      return `(${wr}%\u00a0·\u00a0${s.w}W\u00a0${s.l}L)`;
+    },
+
     // Match card helpers
     matchDate(m) {
       return fmtDate(m.started_at);
@@ -385,29 +415,48 @@ function app() {
     mrLevelColor(lvl) {
       return levelColor(lvl);
     },
+    mrKdColor(kd) {
+      return kdColor(kd);
+    },
 
     mrPlayerContribs(faction, mapId) {
       const players = this.mrFactions[faction]?.players || [];
-      const totalMatches = players.reduce(
-        (s, p) => s + (p.map_stats?.[mapId]?.matches || 0),
-        0,
-      );
-      if (!totalMatches) return [];
+      if (!players.length) return [];
       return players
         .filter((p) => p.map_stats?.[mapId]?.matches > 0)
         .map((p) => {
           const ms = p.map_stats[mapId];
+          const level = p.skill_level || eloToLevel(p.elo);
           return {
             nickname: p.nickname,
             wins: ms.wins,
             matches: ms.matches,
             wr: ms.wr,
-            wrc: Math.round((ms.wins / totalMatches) * 100),
             elo: p.elo || 0,
-            level: p.skill_level || eloToLevel(p.elo),
+            level,
+            kd: ms.kd || 0,
+            // Composite strength: Wilson-adjusted WR × K/D factor × level factor
+            strength: playerMapStrength(
+              ms.wins,
+              ms.matches,
+              ms.kd || 1.0,
+              level,
+            ),
           };
         })
-        .sort((a, b) => b.wrc - a.wrc);
+        .sort((a, b) => b.strength - a.strength);
+    },
+
+    // Team composite score for a map (average of player strengths, 0 if no data)
+    mrTeamScore(faction, mapId) {
+      const contribs = this.mrPlayerContribs(faction, mapId);
+      const totalPlayers =
+        (this.mrFactions[faction]?.players || []).length || 5;
+      if (!contribs.length) return null;
+      // Average strength, but divide by TOTAL roster size (not just players with data)
+      // This way a team with 1/5 players having data gets 1/5th the score, not full score
+      const sum = contribs.reduce((s, c) => s + c.strength, 0);
+      return Math.round((sum / totalPlayers) * 100);
     },
 
     mrTeamDepth(faction, mapId) {
@@ -456,16 +505,31 @@ function app() {
       for (const mapId of this.mrAllMaps) {
         const f1wr = this.mrTeamWr(f1, mapId),
           f2wr = this.mrTeamWr(f2, mapId);
-        if (f1wr === null && f2wr === null) continue;
-        const rawDelta = (f1wr || 0) - (f2wr || 0);
+        const f1score = this.mrTeamScore(f1, mapId);
+        const f2score = this.mrTeamScore(f2, mapId);
+        if (f1score === null && f2score === null) continue;
+        const rawDelta = (f1score || 0) - (f2score || 0);
+        const f1d = this.mrTeamDepth(f1, mapId),
+          f2d = this.mrTeamDepth(f2, mapId);
+        // Flag as low data if either team has fewer than 3 players with data
+        const lowData = f1d.withData < 3 || f2d.withData < 3;
+        // Confidence multiplier: dampen delta when data is sparse
+        // Both teams full data (5/5) = 1.0, one team 1/5 = 0.2
+        const minCoverage = Math.min(f1d.withData, f2d.withData) / 5;
+        const confidence = 0.2 + 0.8 * minCoverage; // floor at 0.2 so it doesn't vanish
+        const adjustedDelta = Math.round(rawDelta * confidence);
         rows.push({
           id: mapId,
           f1wr,
           f2wr,
+          f1score,
+          f2score,
           rawDelta,
-          delta: this.mrPerspective === 0 ? rawDelta : -rawDelta,
-          f1depth: this.mrTeamDepth(f1, mapId),
-          f2depth: this.mrTeamDepth(f2, mapId),
+          lowData,
+          confidence,
+          delta: this.mrPerspective === 0 ? adjustedDelta : -adjustedDelta,
+          f1depth: f1d,
+          f2depth: f2d,
           f1contribs: this.mrPlayerContribs(f1, mapId),
           f2contribs: this.mrPlayerContribs(f2, mapId),
         });
@@ -529,18 +593,41 @@ function app() {
       this.cacheNotice = null;
       this.filterMap = "all";
       this.filterYear = "all";
+      this.filterMode = "all";
       this.enemiesShown = 25;
       this.teammatesShown = 25;
       this._invalidate();
     },
 
     newSearch() {
+      this.cancelSearch();
       this._resetMatchroom();
       this._resetPlayerSearch();
       this.matchroomInput = "";
       const url = new URL(window.location);
       url.search = "";
       window.history.replaceState({}, "", url);
+    },
+
+    // Stop the current search stream but keep results
+    cancelSearch() {
+      if (this._es) {
+        this._es.close();
+        this._es = null;
+      }
+      if (this._mrEs) {
+        this._mrEs.close();
+        this._mrEs = null;
+      }
+      // Flush any buffered matches
+      this._flushMatches();
+      if (this._flushTimer) {
+        clearTimeout(this._flushTimer);
+        this._flushTimer = null;
+      }
+      this.searching = false;
+      this.mrSearching = false;
+      this._invalidate();
     },
 
     // ── SSE: Player vs Player ────────────────────────────────────────────────
@@ -571,6 +658,7 @@ function app() {
       this.teammates = [];
       this.filterMap = "all";
       this.filterYear = "all";
+      this.filterMode = "all";
       this.enemiesShown = 25;
       this.teammatesShown = 25;
       this._invalidate();
@@ -636,7 +724,7 @@ function app() {
               this._flushTimer = setTimeout(() => {
                 this._flushMatches();
                 this._flushTimer = null;
-              }, 200);
+              }, 500);
             }
             break;
           }

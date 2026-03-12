@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script
       defer
-      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js"
     ></script>
     <script src="/static/app.js"></script>
     <link
@@ -94,9 +94,9 @@
     x-init="init()"
   >
     <div class="relative z-10 max-w-4xl mx-auto px-6">
-      <!-- ── COLLAPSED HEADER (results visible) ── -->
+      <!-- ── COLLAPSED HEADER (results visible OR searching) ── -->
       <div
-        x-show="hasAnyResults"
+        x-show="hasAnyResults || searching || mrSearching"
         x-transition
         class="flex items-center justify-between py-4 border-b border-border mb-8"
       >
@@ -107,17 +107,26 @@
         >
           DIDYOU<span class="text-brand">FACEIT</span>
         </a>
-        <button
-          @click="newSearch()"
-          class="font-mono text-[11px] tracking-[2px] uppercase text-muted border border-border px-4 py-2 transition-colors hover:border-brand hover:text-[#e8e8e8]"
-        >
-          NEW SEARCH
-        </button>
+        <div class="flex gap-2">
+          <button
+            x-show="searching || mrSearching"
+            @click="cancelSearch()"
+            class="font-mono text-[11px] tracking-[2px] uppercase text-muted border border-border px-4 py-2 transition-colors hover:border-lose hover:text-lose"
+          >
+            STOP
+          </button>
+          <button
+            @click="newSearch()"
+            class="font-mono text-[11px] tracking-[2px] uppercase text-muted border border-border px-4 py-2 transition-colors hover:border-brand hover:text-[#e8e8e8]"
+          >
+            NEW SEARCH
+          </button>
+        </div>
       </div>
 
-      <!-- ── FULL HEADER (no results) ── -->
+      <!-- ── FULL HEADER (no results, not searching) ── -->
       <header
-        x-show="!hasAnyResults"
+        x-show="!hasAnyResults && !searching && !mrSearching"
         x-transition
         class="py-12 border-b border-border mb-12"
       >
@@ -135,9 +144,9 @@
         </div>
       </header>
 
-      <!-- ── SEARCH CARD (hidden only when actively searching or showing results) ── -->
+      <!-- ── SEARCH CARD (hidden when searching or showing results) ── -->
       <div
-        x-show="!showResults && !mrDone"
+        x-show="!showResults && !mrDone && !searching && !mrSearching"
         x-transition
         class="bg-surface border border-border p-8 mb-10"
       >
@@ -398,7 +407,7 @@
                   ></span>
                   <span
                     class="text-muted"
-                    x-text="'(' + Math.round(filteredMapWins[bestMap].w / (filteredMapWins[bestMap].w + filteredMapWins[bestMap].l) * 100) + '%\u00a0·\u00a0' + filteredMapWins[bestMap].w + 'W\u00a0' + filteredMapWins[bestMap].l + 'L)'"
+                    x-text="mapStatsLabel(bestMap)"
                   ></span>
                 </div>
               </template>
@@ -412,7 +421,7 @@
                   ></span>
                   <span
                     class="text-muted"
-                    x-text="'(' + Math.round(filteredMapWins[worstMap].w / (filteredMapWins[worstMap].w + filteredMapWins[worstMap].l) * 100) + '%\u00a0·\u00a0' + filteredMapWins[worstMap].w + 'W\u00a0' + filteredMapWins[worstMap].l + 'L)'"
+                    x-text="mapStatsLabel(worstMap)"
                   ></span>
                 </div>
               </template>
@@ -427,7 +436,7 @@
 
         <!-- ── BEST LINEUPS (above matches, ranked by Wilson score) ── -->
         <template x-if="bestLineups.length > 0">
-          <div class="mb-8">
+          <div class="mb-8" x-data="{ showAllLineups: false }">
             <div class="flex items-center gap-4 mb-4">
               <div class="font-display text-[22px] tracking-[3px]">
                 BEST LINEUPS
@@ -440,7 +449,7 @@
             </div>
             <div class="flex flex-col gap-2">
               <template
-                x-for="(lu, i) in bestLineups"
+                x-for="(lu, i) in (showAllLineups ? bestLineups : bestLineups.slice(0, 3))"
                 :key="lu.roster.join('|')"
               >
                 <div
@@ -480,6 +489,13 @@
                   </div>
                 </div>
               </template>
+              <template x-if="bestLineups.length > 3">
+                <button
+                  @click="showAllLineups = !showAllLineups"
+                  class="font-mono text-[11px] text-muted border border-border py-2 text-center hover:border-brand hover:text-[#e8e8e8] transition-colors"
+                  x-text="showAllLineups ? 'Show less' : 'Show all ' + bestLineups.length + ' lineups'"
+                ></button>
+              </template>
             </div>
           </div>
         </template>
@@ -489,7 +505,7 @@
           <div class="mb-8 flex flex-col gap-3">
             <div class="flex items-center gap-2 flex-wrap">
               <span
-                class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-8 flex-shrink-0"
+                class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-10 flex-shrink-0"
                 >MAP</span
               >
               <template x-for="map in availableMaps" :key="map">
@@ -503,7 +519,7 @@
             </div>
             <div class="flex items-center gap-2 flex-wrap">
               <span
-                class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-8 flex-shrink-0"
+                class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-10 flex-shrink-0"
                 >YEAR</span
               >
               <template x-for="year in availableYears" :key="year">
@@ -515,6 +531,22 @@
                 ></button>
               </template>
             </div>
+            <template x-if="availableModes.length > 2">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span
+                  class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-10 flex-shrink-0"
+                  >MODE</span
+                >
+                <template x-for="mode in availableModes" :key="mode">
+                  <button
+                    @click="filterMode = mode"
+                    :class="filterMode === mode ? 'bg-brand text-white border-brand' : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
+                    class="font-mono text-[10px] tracking-[1px] uppercase border px-2.5 py-1 transition-colors truncate max-w-[200px]"
+                    x-text="mode === 'all' ? 'ALL' : mode === 'matchmaking' ? '5V5' : mode"
+                  ></button>
+                </template>
+              </div>
+            </template>
           </div>
         </template>
 
@@ -583,15 +615,15 @@
                 </a>
               </template>
               <template x-if="filteredEnemies.length > enemiesShown">
-                <button
-                  @click="enemiesShown += 25"
-                  class="font-mono text-[11px] text-muted border border-border py-2 text-center hover:border-brand hover:text-[#e8e8e8] transition-colors"
+                <div
+                  x-init="
+                  let ob = new IntersectionObserver(([e]) => { if (e.isIntersecting) enemiesShown += 25 }, { rootMargin: '200px' });
+                  ob.observe($el);
+                "
+                  class="font-mono text-[11px] text-muted py-3 text-center blink"
                 >
-                  Show more (<span
-                    x-text="filteredEnemies.length - enemiesShown"
-                  ></span>
-                  remaining)
-                </button>
+                  loading more…
+                </div>
               </template>
             </div>
           </div>
@@ -664,15 +696,15 @@
                 </a>
               </template>
               <template x-if="filteredTeammates.length > teammatesShown">
-                <button
-                  @click="teammatesShown += 25"
-                  class="font-mono text-[11px] text-muted border border-border py-2 text-center hover:border-brand hover:text-[#e8e8e8] transition-colors"
+                <div
+                  x-init="
+                  let ob = new IntersectionObserver(([e]) => { if (e.isIntersecting) teammatesShown += 25 }, { rootMargin: '200px' });
+                  ob.observe($el);
+                "
+                  class="font-mono text-[11px] text-muted py-3 text-center blink"
                 >
-                  Show more (<span
-                    x-text="filteredTeammates.length - teammatesShown"
-                  ></span>
-                  remaining)
-                </button>
+                  loading more…
+                </div>
               </template>
             </div>
           </div>
@@ -748,6 +780,7 @@
                   </div>
                   <div class="flex-1 h-px bg-border"></div>
                 </div>
+                <!-- Team labels -->
                 <div class="grid grid-cols-2 gap-2 mb-3">
                   <div
                     class="flex items-center gap-2 font-mono text-[10px] tracking-wide"
@@ -768,6 +801,30 @@
                     ></span>
                   </div>
                 </div>
+                <!-- Column headers -->
+                <div class="grid grid-cols-2 divide-x divide-border/30 mb-1">
+                  <div class="px-3">
+                    <div
+                      class="grid grid-cols-[16px_minmax(40px,72px)_1fr_28px_28px_42px] gap-1 font-mono text-[7px] tracking-[1px] uppercase text-[#444]"
+                    >
+                      <span>LV</span><span>PLAYER</span><span></span
+                      ><span class="text-right">WR</span
+                      ><span class="text-right">K/D</span
+                      ><span class="text-right">MATCHES</span>
+                    </div>
+                  </div>
+                  <div class="px-3">
+                    <div
+                      class="grid grid-cols-[16px_minmax(40px,72px)_1fr_28px_28px_42px] gap-1 font-mono text-[7px] tracking-[1px] uppercase text-[#444]"
+                    >
+                      <span>LV</span><span>PLAYER</span><span></span
+                      ><span class="text-right">WR</span
+                      ><span class="text-right">K/D</span
+                      ><span class="text-right">MATCHES</span>
+                    </div>
+                  </div>
+                </div>
+                <!-- Map rows -->
                 <div class="flex flex-col gap-2">
                   <template
                     x-for="(row, idx) in mrMapRecommendation"
@@ -777,6 +834,7 @@
                       class="bg-surface border border-border overflow-hidden"
                       :class="idx === 0 ? 'border-win/30' : idx === mrMapRecommendation.length - 1 ? 'border-lose/30' : ''"
                     >
+                      <!-- Map header -->
                       <div
                         class="flex items-center justify-between px-4 py-2 border-b border-border/50"
                         :class="idx === 0 ? 'bg-[#0a1a0a]' : idx === mrMapRecommendation.length - 1 ? 'bg-[#1a0a0a]' : 'bg-surface-alt'"
@@ -799,112 +857,92 @@
                               >BAN</span
                             ></template
                           >
+                          <template x-if="row.lowData"
+                            ><span
+                              class="font-mono text-[9px] tracking-[1px] uppercase text-[#666] bg-[#1a1a1a] border border-[#333] px-1.5 py-0.5 rounded-sm"
+                              >LOW DATA</span
+                            ></template
+                          >
                         </div>
                         <div class="flex items-center gap-3">
                           <span
-                            class="font-mono text-[11px]"
-                            :style="row.f1wr !== null ? `color:${mrWrColor(row.f1wr)}` : 'color:#444'"
+                            class="font-mono text-[10px] text-muted"
                             x-text="(row.f1wr !== null ? row.f1wr + '%' : '—') + ' vs ' + (row.f2wr !== null ? row.f2wr + '%' : '—')"
                           ></span>
+                          <span class="font-mono text-[10px] text-[#555]"
+                            >·</span
+                          >
                           <span
-                            class="font-mono text-[13px] font-medium min-w-[40px] text-right"
+                            class="font-mono text-[10px]"
+                            :class="row.delta > 0 ? 'text-win' : row.delta < 0 ? 'text-lose' : 'text-muted'"
+                            x-text="(row.f1score || 0) + ' vs ' + (row.f2score || 0)"
+                          ></span>
+                          <span
+                            class="font-mono text-[13px] font-medium min-w-[36px] text-right"
                             :class="row.delta > 0 ? 'text-win' : row.delta < 0 ? 'text-lose' : 'text-muted'"
                             x-text="(row.delta > 0 ? '+' : '') + row.delta"
                           ></span>
                           <span
                             class="font-mono text-[11px] w-4 text-center"
-                            :class="row.delta > 3 ? 'text-win' : row.delta < -3 ? 'text-lose' : 'text-muted'"
-                            x-text="row.delta > 3 ? '▲' : row.delta < -3 ? '▼' : '—'"
+                            :class="row.delta > 2 ? 'text-win' : row.delta < -2 ? 'text-lose' : 'text-muted'"
+                            x-text="row.delta > 2 ? '▲' : row.delta < -2 ? '▼' : '—'"
                           ></span>
                         </div>
                       </div>
+                      <!-- Player panels (modular — same structure both sides) -->
                       <div class="grid grid-cols-2 divide-x divide-border/50">
-                        <div class="px-3 py-2">
-                          <template
-                            x-for="c in row.f1contribs"
-                            :key="c.nickname"
-                          >
-                            <div
-                              class="grid grid-cols-[16px_minmax(50px,80px)_1fr_36px_32px] gap-1.5 items-center py-[2px]"
-                              :class="c.matches < 20 ? 'opacity-40' : ''"
-                            >
-                              <span
-                                class="font-mono text-[8px] text-center font-medium"
-                                :style="`color:${mrLevelColor(c.level)}`"
-                                x-text="c.level || '—'"
-                              ></span>
-                              <span
-                                class="font-mono text-[9px] truncate"
-                                x-text="c.nickname"
-                              ></span>
+                        <template
+                          x-for="contribs in [row.f1contribs, row.f2contribs]"
+                          :key="contribs === row.f1contribs ? 'f1' : 'f2'"
+                        >
+                          <div class="px-3 py-2">
+                            <template x-for="c in contribs" :key="c.nickname">
                               <div
-                                class="h-[3px] bg-border/50 rounded-full overflow-hidden"
+                                class="grid grid-cols-[16px_minmax(40px,72px)_1fr_28px_28px_42px] gap-1 items-center py-[2px]"
+                                :class="c.matches < 20 ? 'opacity-40' : ''"
                               >
+                                <span
+                                  class="font-mono text-[8px] text-center font-medium"
+                                  :style="`color:${mrLevelColor(c.level)}`"
+                                  x-text="c.level || '—'"
+                                ></span>
+                                <span
+                                  class="font-mono text-[9px] truncate"
+                                  x-text="c.nickname"
+                                ></span>
                                 <div
-                                  class="h-full rounded-full"
-                                  :style="`width:${Math.min(c.wr,100)}%;background:${mrWrColor(c.wr)}`"
-                                ></div>
+                                  class="h-[3px] bg-border/50 rounded-full overflow-hidden"
+                                >
+                                  <div
+                                    class="h-full rounded-full"
+                                    :style="`width:${Math.min(c.wr,100)}%;background:${mrWrColor(c.wr)}`"
+                                  ></div>
+                                </div>
+                                <span
+                                  class="font-mono text-[9px] text-right"
+                                  :style="`color:${mrWrColor(c.wr)}`"
+                                  x-text="c.wr+'%'"
+                                ></span>
+                                <span
+                                  class="font-mono text-[8px] text-right"
+                                  :style="`color:${mrKdColor(c.kd)}`"
+                                  x-text="c.kd ? c.kd.toFixed(2) : '—'"
+                                ></span>
+                                <span
+                                  class="font-mono text-[8px] text-muted text-right"
+                                  x-text="c.matches"
+                                ></span>
                               </div>
-                              <span
-                                class="font-mono text-[9px] text-right"
-                                :style="`color:${mrWrColor(c.wr)}`"
-                                x-text="c.wr+'%'"
-                              ></span>
-                              <span
-                                class="font-mono text-[8px] text-muted text-right"
-                                x-text="c.matches+'m'"
-                              ></span>
-                            </div>
-                          </template>
-                          <template x-if="row.f1contribs.length === 0"
-                            ><div class="font-mono text-[9px] text-muted py-1">
-                              no data
-                            </div></template
-                          >
-                        </div>
-                        <div class="px-3 py-2">
-                          <template
-                            x-for="c in row.f2contribs"
-                            :key="c.nickname"
-                          >
-                            <div
-                              class="grid grid-cols-[16px_minmax(50px,80px)_1fr_36px_32px] gap-1.5 items-center py-[2px]"
-                              :class="c.matches < 20 ? 'opacity-40' : ''"
+                            </template>
+                            <template x-if="contribs.length === 0"
+                              ><div
+                                class="font-mono text-[9px] text-muted py-1"
+                              >
+                                no data
+                              </div></template
                             >
-                              <span
-                                class="font-mono text-[8px] text-center font-medium"
-                                :style="`color:${mrLevelColor(c.level)}`"
-                                x-text="c.level || '—'"
-                              ></span>
-                              <span
-                                class="font-mono text-[9px] truncate"
-                                x-text="c.nickname"
-                              ></span>
-                              <div
-                                class="h-[3px] bg-border/50 rounded-full overflow-hidden"
-                              >
-                                <div
-                                  class="h-full rounded-full"
-                                  :style="`width:${Math.min(c.wr,100)}%;background:${mrWrColor(c.wr)}`"
-                                ></div>
-                              </div>
-                              <span
-                                class="font-mono text-[9px] text-right"
-                                :style="`color:${mrWrColor(c.wr)}`"
-                                x-text="c.wr+'%'"
-                              ></span>
-                              <span
-                                class="font-mono text-[8px] text-muted text-right"
-                                x-text="c.matches+'m'"
-                              ></span>
-                            </div>
-                          </template>
-                          <template x-if="row.f2contribs.length === 0"
-                            ><div class="font-mono text-[9px] text-muted py-1">
-                              no data
-                            </div></template
-                          >
-                        </div>
+                          </div>
+                        </template>
                       </div>
                     </div>
                   </template>
@@ -912,15 +950,13 @@
                 <div
                   class="font-mono text-[10px] text-muted mt-3 tracking-wide"
                 >
-                  Sorted by advantage for
+                  Sorted by composite score for
                   <span
                     class="text-[#e8e8e8]"
                     x-text="(mrFactions[mrFactionKeys[mrPerspective]]?.name || mrFactionKeys[mrPerspective]) + ' (Team ' + (mrPerspective === 0 ? 'A' : 'B') + ')'"
                   ></span
-                  >.
-                  <span class="text-muted"
-                    >Faded = &lt;20 matches. Number = FACEIT level.</span
-                  >
+                  >. Score = Wilson WR × K/D factor × level. Faded = &lt;20
+                  matches.
                 </div>
               </div>
             </template>
