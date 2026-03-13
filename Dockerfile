@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM python:3.13-slim AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:0.10-python3.13-trixie /uv /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.10.9 /uv /usr/local/bin/
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ RUN uv sync --no-dev --no-editable --inexact
 
 FROM python:3.13-slim AS runtime
 
-COPY --from=ghcr.io/astral-sh/uv:0.10-python3.13-trixie /uv /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.10.9 /uv /usr/local/bin/
 COPY --from=builder /app /app
 
 WORKDIR /app
