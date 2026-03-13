@@ -25,11 +25,12 @@ _LABEL_TO_MAP_ID = {
     "nuke": "de_nuke",
     "ancient": "de_ancient",
     "anubis": "de_anubis",
-    "vertigo": "de_vertigo",
-    "train": "de_train",
-    "cache": "de_cache",
     "overpass": "de_overpass",
-    "cobblestone": "de_cobblestone",
+    # Not in current rotation — uncomment to re-enable:
+    # "vertigo": "de_vertigo",
+    # "train": "de_train",
+    # "cache": "de_cache",
+    # "cobblestone": "de_cobblestone",
 }
 
 
