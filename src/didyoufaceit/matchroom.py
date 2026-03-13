@@ -36,7 +36,7 @@ _LABEL_TO_MAP_ID = {
 
 def _label_to_map_id(label: str) -> str | None:
     key = label.lower().replace(" ", "").replace("_", "")
-    return _LABEL_TO_MAP_ID.get(key, f"de_{key}")
+    return _LABEL_TO_MAP_ID.get(key)  # returns None for maps not in rotation
 
 
 def _parse_map_stats(segments: list[dict]) -> dict[str, dict]:
@@ -46,7 +46,7 @@ def _parse_map_stats(segments: list[dict]) -> dict[str, dict]:
             continue
         label = seg.get("label", "")
         map_id = _label_to_map_id(label)
-        if not map_id:
+        if not map_id or map_id not in _LABEL_TO_MAP_ID.values():
             continue
         stats = seg.get("stats", {})
         try:
