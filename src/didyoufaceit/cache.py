@@ -1,4 +1,9 @@
-"""Async PostgreSQL cache for FACEIT match data and player scan state."""
+"""Async PostgreSQL cache for FACEIT match data and player scan state.
+
+Tuned for a single-app consumer with bursty parallel inserts.
+Pool is kept small; bulk ops use unnest/VALUES batching instead of executemany.
+Stale cache rows are cleaned up periodically.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +11,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 
 import asyncpg
 
@@ -13,10 +19,29 @@ log = logging.getLogger(__name__)
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://didyou:didyou@localhost:5432/didyou")
 
-STATS_TTL_SECONDS = 3 * 24 * 3600  # 3 days
+# ── TTL configuration ─────────────────────────────────────────────────────────
+
+STATS_TTL_SECONDS = 3 * 24 * 3600  # 3 days  — player lifetime stats
+MATCHROOM_TTL_SECONDS = 30 * 24 * 3600  # 30 days  — matchroom snapshots
+MATCH_TTL_SECONDS = 90 * 24 * 3600  # 90 days — individual match data
+PLAYER_TTL_SECONDS = 30 * 24 * 3600  # 30 days — player nickname cache
+SCAN_TTL_SECONDS = 6 * 3600  # 6 hours — before re-fetching recent history
+
+CLEANUP_INTERVAL_SECONDS = 6 * 3600  # run cleanup every 6 hours
+
+# ── pool configuration ────────────────────────────────────────────────────────
+# Single consumer app — keep the pool small so Postgres has room for
+# autovacuum workers, replication slots, etc.  max_size=5 is plenty for
+# our concurrency (FACEIT API semaphore is 5 and that's the bottleneck).
+
+POOL_MIN_SIZE = 1
+POOL_MAX_SIZE = 5
+POOL_COMMAND_TIMEOUT = 15  # kill queries that hang
+POOL_MAX_INACTIVE_CONNECTION_LIFETIME = 300  # drop idle conns after 5 min
 
 _pool: asyncpg.Pool | None = None
 _pool_lock = asyncio.Lock()
+_cleanup_task: asyncio.Task | None = None
 
 
 async def _get_pool() -> asyncpg.Pool:
@@ -24,14 +49,23 @@ async def _get_pool() -> asyncpg.Pool:
     if _pool is not None:
         return _pool
     async with _pool_lock:
-        # Double-check after acquiring lock
         if _pool is None:
-            _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=20)
+            _pool = await asyncpg.create_pool(
+                DATABASE_URL,
+                min_size=POOL_MIN_SIZE,
+                max_size=POOL_MAX_SIZE,
+                command_timeout=POOL_COMMAND_TIMEOUT,
+                max_inactive_connection_lifetime=POOL_MAX_INACTIVE_CONNECTION_LIFETIME,
+            )
     return _pool
 
 
+# ── lifecycle ─────────────────────────────────────────────────────────────────
+
+
 async def init_db() -> None:
-    """Create tables if they don't exist."""
+    """Create tables if they don't exist and start background cleanup."""
+    global _cleanup_task
     pool = await _get_pool()
     async with pool.acquire() as conn:
         await conn.execute("""
@@ -78,19 +112,85 @@ async def init_db() -> None:
                 fetched_at    INT DEFAULT (EXTRACT(EPOCH FROM NOW())::int)
             );
 
-            -- Indexes for common lookups
             CREATE INDEX IF NOT EXISTS idx_player_matches_player ON player_matches(player_id);
-            CREATE INDEX IF NOT EXISTS idx_player_matches_match ON player_matches(match_id);
+            CREATE INDEX IF NOT EXISTS idx_player_matches_match  ON player_matches(match_id);
+            CREATE INDEX IF NOT EXISTS idx_matches_fetched       ON matches(fetched_at);
+            CREATE INDEX IF NOT EXISTS idx_players_updated       ON players(updated_at);
+            CREATE INDEX IF NOT EXISTS idx_stats_fetched         ON player_stats_cache(fetched_at);
+            CREATE INDEX IF NOT EXISTS idx_matchroom_fetched     ON matchroom_cache(fetched_at);
         """)
     log.info("Database schema initialized")
 
+    # Start background TTL cleanup
+    if _cleanup_task is None or _cleanup_task.done():
+        _cleanup_task = asyncio.create_task(_cleanup_loop())
+        log.info("Started background cache cleanup task")
+
 
 async def close_db() -> None:
-    """Close the connection pool."""
-    global _pool
+    """Cancel cleanup and close the connection pool."""
+    global _pool, _cleanup_task
+    if _cleanup_task and not _cleanup_task.done():
+        _cleanup_task.cancel()
+        try:
+            await _cleanup_task
+        except asyncio.CancelledError:
+            pass
+        _cleanup_task = None
     if _pool:
         await _pool.close()
         _pool = None
+
+
+# ── background TTL cleanup ────────────────────────────────────────────────────
+
+
+async def _cleanup_loop() -> None:
+    """Periodically delete expired cache rows."""
+    while True:
+        try:
+            await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
+            await cleanup_expired()
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            log.exception("Cache cleanup error (will retry next cycle)")
+
+
+async def cleanup_expired() -> None:
+    """Delete rows older than their TTL.  Safe to call anytime."""
+    now = int(time.time())
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        r1 = await conn.execute(
+            "DELETE FROM player_stats_cache WHERE fetched_at < $1",
+            now - STATS_TTL_SECONDS,
+        )
+        r2 = await conn.execute(
+            "DELETE FROM matchroom_cache WHERE fetched_at < $1",
+            now - MATCHROOM_TTL_SECONDS,
+        )
+        r3 = await conn.execute(
+            "DELETE FROM matches WHERE fetched_at < $1",
+            now - MATCH_TTL_SECONDS,
+        )
+        r4 = await conn.execute(
+            "DELETE FROM players WHERE updated_at < $1",
+            now - PLAYER_TTL_SECONDS,
+        )
+        # Clean up orphaned player_matches links (match was evicted)
+        r5 = await conn.execute("""
+            DELETE FROM player_matches pm
+            WHERE NOT EXISTS (SELECT 1 FROM matches m WHERE m.match_id = pm.match_id)
+        """)
+    log.info(
+        "Cache cleanup: stats=%s matchrooms=%s matches=%s players=%s orphan_links=%s",
+        r1,
+        r2,
+        r3,
+        r4,
+        r5,
+    )
 
 
 # ── players ───────────────────────────────────────────────────────────────────
@@ -103,27 +203,30 @@ async def upsert_player(player_id: str, nickname: str) -> None:
         INSERT INTO players (player_id, nickname, updated_at)
         VALUES ($1, $2, EXTRACT(EPOCH FROM NOW())::int)
         ON CONFLICT (player_id) DO UPDATE SET
-            nickname = EXCLUDED.nickname,
-            updated_at = EXTRACT(EPOCH FROM NOW())::int
-    """,
+            nickname   = EXCLUDED.nickname,
+            updated_at = EXCLUDED.updated_at
+        """,
         player_id,
         nickname,
     )
 
 
 async def upsert_players_bulk(players: list[tuple[str, str]]) -> None:
+    """Bulk upsert using unnest — single roundtrip instead of N."""
     if not players:
         return
+    ids, nicks = zip(*players)
     pool = await _get_pool()
-    await pool.executemany(
+    await pool.execute(
         """
         INSERT INTO players (player_id, nickname, updated_at)
-        VALUES ($1, $2, EXTRACT(EPOCH FROM NOW())::int)
+        SELECT unnest($1::text[]), unnest($2::text[]), EXTRACT(EPOCH FROM NOW())::int
         ON CONFLICT (player_id) DO UPDATE SET
-            nickname = EXCLUDED.nickname,
-            updated_at = EXTRACT(EPOCH FROM NOW())::int
-    """,
-        players,
+            nickname   = EXCLUDED.nickname,
+            updated_at = EXCLUDED.updated_at
+        """,
+        list(ids),
+        list(nicks),
     )
 
 
@@ -145,22 +248,35 @@ async def get_nicknames(player_ids: list[str]) -> dict[str, str]:
 # ── matches ───────────────────────────────────────────────────────────────────
 
 
-async def get_cached_match(match_id: str) -> dict | None:
+async def get_cached_matches_bulk(match_ids: list[str]) -> dict[str, dict | None]:
+    """Fetch multiple matches in a single query.  Returns {match_id: data | None}."""
+    if not match_ids:
+        return {}
     pool = await _get_pool()
-    row = await pool.fetchrow("SELECT * FROM matches WHERE match_id = $1", match_id)
-    if not row:
-        return None
-    return {
-        "match_id": row["match_id"],
-        "started_at": row["started_at"],
-        "status": row["status"],
-        "map": row["map"],
-        "teams": _ensure_dict(row["teams_json"]),
-        "score": _ensure_dict(row["score_json"]),
-        "faceit_url": row["faceit_url"],
-        "competition_type": row["competition_type"] or "",
-        "competition_name": row["competition_name"] or "",
-    }
+    rows = await pool.fetch(
+        "SELECT * FROM matches WHERE match_id = ANY($1)",
+        match_ids,
+    )
+    found = {}
+    for row in rows:
+        found[row["match_id"]] = {
+            "match_id": row["match_id"],
+            "started_at": row["started_at"],
+            "status": row["status"],
+            "map": row["map"],
+            "teams": _ensure_dict(row["teams_json"]),
+            "score": _ensure_dict(row["score_json"]),
+            "faceit_url": row["faceit_url"],
+            "competition_type": row["competition_type"] or "",
+            "competition_name": row["competition_name"] or "",
+        }
+    # Fill in misses as None
+    return {mid: found.get(mid) for mid in match_ids}
+
+
+async def get_cached_match(match_id: str) -> dict | None:
+    results = await get_cached_matches_bulk([match_id])
+    return results.get(match_id)
 
 
 async def save_match(
@@ -181,15 +297,15 @@ async def save_match(
                              faceit_url, competition_type, competition_name)
         VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9)
         ON CONFLICT (match_id) DO UPDATE SET
-            started_at = EXCLUDED.started_at,
-            status = EXCLUDED.status,
-            map = EXCLUDED.map,
-            teams_json = EXCLUDED.teams_json,
-            score_json = EXCLUDED.score_json,
-            faceit_url = EXCLUDED.faceit_url,
+            started_at       = EXCLUDED.started_at,
+            status           = EXCLUDED.status,
+            map              = EXCLUDED.map,
+            teams_json       = EXCLUDED.teams_json,
+            score_json       = EXCLUDED.score_json,
+            faceit_url       = EXCLUDED.faceit_url,
             competition_type = EXCLUDED.competition_type,
             competition_name = EXCLUDED.competition_name
-    """,
+        """,
         match_id,
         started_at,
         status,
@@ -204,7 +320,11 @@ async def save_match(
 
 async def update_match_score(match_id: str, score: dict) -> None:
     pool = await _get_pool()
-    await pool.execute("UPDATE matches SET score_json = $1::jsonb WHERE match_id = $2", json.dumps(score), match_id)
+    await pool.execute(
+        "UPDATE matches SET score_json = $1::jsonb WHERE match_id = $2",
+        json.dumps(score),
+        match_id,
+    )
 
 
 # ── player_matches ────────────────────────────────────────────────────────────
@@ -213,23 +333,35 @@ async def update_match_score(match_id: str, score: dict) -> None:
 async def link_player_match(player_id: str, match_id: str) -> None:
     pool = await _get_pool()
     await pool.execute(
-        "INSERT INTO player_matches (player_id, match_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", player_id, match_id
+        "INSERT INTO player_matches (player_id, match_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        player_id,
+        match_id,
     )
 
 
 async def link_player_matches_bulk(player_id: str, match_ids: list[str]) -> None:
+    """Bulk link using unnest — single roundtrip for thousands of rows."""
     if not match_ids:
         return
     pool = await _get_pool()
-    await pool.executemany(
-        "INSERT INTO player_matches (player_id, match_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-        [(player_id, mid) for mid in match_ids],
+    # Build parallel arrays: [player_id, player_id, ...] and [mid1, mid2, ...]
+    await pool.execute(
+        """
+        INSERT INTO player_matches (player_id, match_id)
+        SELECT $1, unnest($2::text[])
+        ON CONFLICT DO NOTHING
+        """,
+        player_id,
+        match_ids,
     )
 
 
 async def get_player_match_ids(player_id: str) -> set[str]:
     pool = await _get_pool()
-    rows = await pool.fetch("SELECT match_id FROM player_matches WHERE player_id = $1", player_id)
+    rows = await pool.fetch(
+        "SELECT match_id FROM player_matches WHERE player_id = $1",
+        player_id,
+    )
     return {r["match_id"] for r in rows}
 
 
@@ -238,14 +370,20 @@ async def get_player_match_ids(player_id: str) -> set[str]:
 
 async def is_player_fully_scanned(player_id: str) -> bool:
     pool = await _get_pool()
-    row = await pool.fetchrow("SELECT 1 FROM player_scans WHERE player_id = $1", player_id)
+    row = await pool.fetchrow(
+        "SELECT 1 FROM player_scans WHERE player_id = $1",
+        player_id,
+    )
     return row is not None
 
 
 async def get_player_scan_info(player_id: str) -> dict | None:
     """Return {scanned_at, total_matches} or None if never scanned."""
     pool = await _get_pool()
-    row = await pool.fetchrow("SELECT scanned_at, total_matches FROM player_scans WHERE player_id = $1", player_id)
+    row = await pool.fetchrow(
+        "SELECT scanned_at, total_matches FROM player_scans WHERE player_id = $1",
+        player_id,
+    )
     if not row:
         return None
     return {"scanned_at": row["scanned_at"], "total_matches": row["total_matches"]}
@@ -258,24 +396,25 @@ async def mark_player_scanned(player_id: str, total_matches: int) -> None:
         INSERT INTO player_scans (player_id, scanned_at, total_matches)
         VALUES ($1, EXTRACT(EPOCH FROM NOW())::int, $2)
         ON CONFLICT (player_id) DO UPDATE SET
-            scanned_at = EXTRACT(EPOCH FROM NOW())::int,
+            scanned_at    = EXCLUDED.scanned_at,
             total_matches = EXCLUDED.total_matches
-    """,
+        """,
         player_id,
         total_matches,
     )
 
 
-# ── player stats cache (3-day TTL) ───────────────────────────────────────────
+# ── player stats cache ───────────────────────────────────────────────────────
 
 
 async def get_cached_player_stats(player_id: str) -> dict | None:
     pool = await _get_pool()
-    row = await pool.fetchrow("SELECT stats_json, fetched_at FROM player_stats_cache WHERE player_id = $1", player_id)
+    row = await pool.fetchrow(
+        "SELECT stats_json, fetched_at FROM player_stats_cache WHERE player_id = $1",
+        player_id,
+    )
     if not row:
         return None
-    import time
-
     if time.time() - (row["fetched_at"] or 0) > STATS_TTL_SECONDS:
         return None
     return _ensure_dict(row["stats_json"])
@@ -289,20 +428,25 @@ async def save_player_stats(player_id: str, stats: dict) -> None:
         VALUES ($1, $2::jsonb, EXTRACT(EPOCH FROM NOW())::int)
         ON CONFLICT (player_id) DO UPDATE SET
             stats_json = EXCLUDED.stats_json,
-            fetched_at = EXTRACT(EPOCH FROM NOW())::int
-    """,
+            fetched_at = EXCLUDED.fetched_at
+        """,
         player_id,
         json.dumps(stats),
     )
 
 
-# ── matchroom cache (permanent) ──────────────────────────────────────────────
+# ── matchroom cache ──────────────────────────────────────────────────────────
 
 
 async def get_cached_matchroom(match_id: str) -> dict | None:
     pool = await _get_pool()
-    row = await pool.fetchrow("SELECT data_json FROM matchroom_cache WHERE match_id = $1", match_id)
+    row = await pool.fetchrow(
+        "SELECT data_json, fetched_at FROM matchroom_cache WHERE match_id = $1",
+        match_id,
+    )
     if not row:
+        return None
+    if time.time() - (row["fetched_at"] or 0) > MATCHROOM_TTL_SECONDS:
         return None
     return _ensure_dict(row["data_json"])
 
@@ -314,9 +458,9 @@ async def save_matchroom(match_id: str, data: dict) -> None:
         INSERT INTO matchroom_cache (match_id, data_json, fetched_at)
         VALUES ($1, $2::jsonb, EXTRACT(EPOCH FROM NOW())::int)
         ON CONFLICT (match_id) DO UPDATE SET
-            data_json = EXCLUDED.data_json,
-            fetched_at = EXTRACT(EPOCH FROM NOW())::int
-    """,
+            data_json  = EXCLUDED.data_json,
+            fetched_at = EXCLUDED.fetched_at
+        """,
         match_id,
         json.dumps(data),
     )
@@ -331,7 +475,11 @@ async def get_db_stats() -> dict:
         matches = await conn.fetchval("SELECT COUNT(*) FROM matches")
         players = await conn.fetchval("SELECT COUNT(*) FROM players")
         links = await conn.fetchval("SELECT COUNT(*) FROM player_matches")
-    return {"cached_matches": matches, "known_players": players, "player_match_links": links}
+    return {
+        "cached_matches": matches,
+        "known_players": players,
+        "player_match_links": links,
+    }
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
