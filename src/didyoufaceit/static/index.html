@@ -86,6 +86,29 @@
       .blink {
         animation: blink 1.4s ease-in-out infinite;
       }
+      /* Hover lift for secondary cards */
+      .search-card {
+        transition:
+          border-color 0.2s ease,
+          transform 0.15s ease;
+      }
+      .search-card:hover {
+        transform: translateY(-1px);
+      }
+      /* Subtle label line accent */
+      .card-label {
+        position: relative;
+      }
+      .card-label::after {
+        content: "";
+        position: absolute;
+        bottom: -4px;
+        left: 0;
+        height: 1px;
+        width: 24px;
+        background: currentColor;
+        opacity: 0.4;
+      }
     </style>
   </head>
   <body
@@ -128,142 +151,85 @@
       <header
         x-show="!hasAnyResults && !searching && !mrSearching && !banScanning"
         x-transition
-        class="py-12 border-b border-border mb-12"
+        class="pt-8 pb-6 mb-6"
       >
         <a href="/" class="block">
           <div
-            class="font-display text-[clamp(48px,8vw,80px)] tracking-widest leading-none"
+            class="font-display text-[clamp(32px,5vw,44px)] tracking-widest leading-none"
           >
             DIDYOU<span class="text-brand">FACEIT</span>
           </div>
         </a>
-        <div
-          class="font-mono text-[11px] text-muted tracking-[3px] uppercase mt-2"
-        >
-          List matches with someone else
-        </div>
       </header>
 
-      <!-- ── SEARCH CARD (hidden when searching or showing results) ── -->
+      <!-- ══════════════════════════════════════════════════════════════════════
+           SEARCH FORMS — Hero + Two Secondary Cards
+           ══════════════════════════════════════════════════════════════════════ -->
       <div
         x-show="!showResults && !mrDone && !searching && !mrSearching && !showBanResults && !banScanning"
         x-transition
-        class="bg-surface border border-border p-8 mb-10"
+        class="mb-10"
       >
-        <div class="grid grid-cols-[1fr_auto_1fr] gap-4 items-end mb-5">
-          <div>
-            <label
-              class="block font-mono text-[10px] tracking-[2px] uppercase text-muted mb-2"
-              >Your Nickname</label
-            >
-            <input
-              type="text"
-              x-model="youInput"
-              @keyup.enter="doSearch()"
-              placeholder="your_nick"
-              autocomplete="off"
-              spellcheck="false"
-              class="w-full bg-[#0d0d0d] border border-border text-[#e8e8e8] font-mono text-[15px] px-4 py-3 outline-none transition-colors focus:border-brand placeholder-[#333]"
-            />
-          </div>
-          <div
-            class="font-display text-[28px] text-brand text-center tracking-widest pb-3"
-          >
-            VS
-          </div>
-          <div>
-            <label
-              class="block font-mono text-[10px] tracking-[2px] uppercase text-muted mb-2"
-              >Opponent Nickname</label
-            >
-            <input
-              type="text"
-              x-model="oppInput"
-              @keyup.enter="doSearch()"
-              placeholder="their_nick"
-              autocomplete="off"
-              spellcheck="false"
-              class="w-full bg-[#0d0d0d] border border-border text-[#e8e8e8] font-mono text-[15px] px-4 py-3 outline-none transition-colors focus:border-brand placeholder-[#333]"
-            />
-          </div>
-        </div>
-        <button
-          @click="doSearch()"
-          :disabled="searching || mrSearching || banScanning"
-          class="w-full bg-brand text-white font-display text-xl tracking-[3px] py-4 transition-opacity hover:opacity-85 active:scale-[.99] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+        <!-- ── HERO: Player vs Player ── -->
+        <div
+          class="bg-surface border border-border p-8 mb-4 search-card hover:border-brand/40"
         >
-          <svg
-            x-show="searching"
-            class="animate-spin size-5 text-white flex-shrink-0"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              class="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              stroke-width="4"
-            />
-            <path
-              class="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-            />
-          </svg>
-          <span x-text="searching ? 'SEARCHING…' : 'SEARCH'"></span>
-        </button>
-
-        <!-- Matchroom divider -->
-        <div class="flex items-center gap-4 mt-6">
-          <div class="flex-1 h-px bg-border"></div>
-          <span
-            class="font-mono text-[10px] tracking-[2px] uppercase text-muted"
-            >or paste a matchroom url</span
-          >
-          <div class="flex-1 h-px bg-border"></div>
-        </div>
-        <div class="mt-4">
-          <input
-            type="text"
-            x-model="matchroomInput"
-            @keyup.enter="doSearch()"
-            placeholder="faceit.com/en/cs2/room/1-xxxx… or just the match id"
-            autocomplete="off"
-            spellcheck="false"
-            class="w-full bg-[#0d0d0d] border border-border text-[#e8e8e8] font-mono text-[13px] px-4 py-3 outline-none transition-colors focus:border-brand placeholder-[#333]"
-          />
-        </div>
-
-        <!-- Ban scan divider -->
-        <div class="flex items-center gap-4 mt-6">
-          <div class="flex-1 h-px bg-border"></div>
-          <span
-            class="font-mono text-[10px] tracking-[2px] uppercase text-muted"
-            >or find banned opponents</span
-          >
-          <div class="flex-1 h-px bg-border"></div>
-        </div>
-        <div class="mt-4 flex gap-3">
-          <input
-            type="text"
-            x-model="banScanInput"
-            @keyup.enter="doBanScan()"
-            placeholder="your nickname"
-            autocomplete="off"
-            spellcheck="false"
-            class="flex-1 bg-[#0d0d0d] border border-border text-[#e8e8e8] font-mono text-[13px] px-4 py-3 outline-none transition-colors focus:border-lose placeholder-[#333]"
-          />
+          <div class="flex items-center gap-3 mb-6">
+            <div
+              class="font-display text-[20px] tracking-[3px] text-[#e8e8e8] card-label"
+            >
+              PLAYER VS PLAYER
+            </div>
+            <div class="flex-1 h-px bg-border"></div>
+            <span class="font-mono text-[10px] tracking-[1px] text-muted"
+              >head-to-head &amp; lineups</span
+            >
+          </div>
+          <div class="grid grid-cols-[1fr_auto_1fr] gap-4 items-end mb-5">
+            <div>
+              <label
+                class="block font-mono text-[10px] tracking-[2px] uppercase text-muted mb-2"
+                >Your Nickname</label
+              >
+              <input
+                type="text"
+                x-model="youInput"
+                @keyup.enter="doSearch()"
+                placeholder="your_nick"
+                autocomplete="off"
+                spellcheck="false"
+                class="w-full bg-[#0d0d0d] border border-border text-[#e8e8e8] font-mono text-[15px] px-4 py-3 outline-none transition-colors focus:border-brand placeholder-[#333]"
+              />
+            </div>
+            <div
+              class="font-display text-[28px] text-brand text-center tracking-widest pb-3"
+            >
+              VS
+            </div>
+            <div>
+              <label
+                class="block font-mono text-[10px] tracking-[2px] uppercase text-muted mb-2"
+                >Opponent Nickname</label
+              >
+              <input
+                type="text"
+                x-model="oppInput"
+                @keyup.enter="doSearch()"
+                placeholder="their_nick"
+                autocomplete="off"
+                spellcheck="false"
+                class="w-full bg-[#0d0d0d] border border-border text-[#e8e8e8] font-mono text-[15px] px-4 py-3 outline-none transition-colors focus:border-brand placeholder-[#333]"
+              />
+            </div>
+          </div>
           <button
-            @click="doBanScan()"
-            :disabled="banScanning"
-            class="bg-[#2a0a0a] text-lose border border-[#4a1a1a] font-display text-lg tracking-[2px] px-6 py-3 transition-all hover:bg-[#3a0a0a] hover:border-lose disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+            @click="doSearch()"
+            :disabled="searching || mrSearching || banScanning"
+            class="w-full bg-brand text-white font-display text-xl tracking-[3px] py-4 transition-opacity hover:opacity-85 active:scale-[.99] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-3"
           >
             <svg
-              x-show="banScanning"
-              class="animate-spin size-4 text-lose flex-shrink-0"
+              x-show="searching"
+              class="animate-spin size-5 text-white flex-shrink-0"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
@@ -282,22 +248,141 @@
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
               />
             </svg>
-            <span x-text="banScanning ? 'SCANNING…' : 'BAN SCAN'"></span>
+            <span x-text="searching ? 'SEARCHING…' : 'SEARCH'"></span>
           </button>
+
+          <div
+            x-show="cacheNotice"
+            x-transition
+            class="flex items-center gap-2 mt-4 font-mono text-[11px] tracking-[1px] text-muted"
+          >
+            <span
+              class="inline-block size-2 rounded-full flex-shrink-0"
+              :class="cacheNotice?.hit ? 'bg-win shadow-[0_0_6px_#22c55e]' : 'bg-brand shadow-[0_0_6px_#ff5500]'"
+            ></span>
+            <span x-text="cacheNotice?.msg"></span>
+          </div>
         </div>
 
-        <div
-          x-show="cacheNotice"
-          x-transition
-          class="flex items-center gap-2 mt-4 font-mono text-[11px] tracking-[1px] text-muted"
-        >
-          <span
-            class="inline-block size-2 rounded-full flex-shrink-0"
-            :class="cacheNotice?.hit ? 'bg-win shadow-[0_0_6px_#22c55e]' : 'bg-brand shadow-[0_0_6px_#ff5500]'"
-          ></span>
-          <span x-text="cacheNotice?.msg"></span>
+        <!-- ── TWO SECONDARY CARDS ── -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- MATCHROOM LOOKUP -->
+          <div
+            class="bg-surface border border-border p-6 search-card hover:border-blue/40 flex flex-col"
+          >
+            <div class="flex items-center gap-3 mb-5">
+              <div
+                class="font-display text-[18px] tracking-[3px] text-blue card-label"
+              >
+                MATCHROOM
+              </div>
+              <div class="flex-1 h-px bg-border"></div>
+            </div>
+            <p class="font-mono text-[11px] text-muted leading-relaxed mb-4">
+              Paste a matchroom URL or match ID to get per-map stats and
+              pick/ban recommendations.
+            </p>
+            <div class="mt-auto">
+              <input
+                type="text"
+                x-model="matchroomInput"
+                @keyup.enter="doSearch()"
+                placeholder="room URL or match id"
+                autocomplete="off"
+                spellcheck="false"
+                class="w-full bg-[#0d0d0d] border border-border text-[#e8e8e8] font-mono text-[13px] px-4 py-3 outline-none transition-colors focus:border-blue placeholder-[#333] mb-3"
+              />
+              <button
+                @click="doSearch()"
+                :disabled="searching || mrSearching || banScanning"
+                class="w-full bg-[#0a1a2a] text-blue border border-[#1a3a5a] font-display text-lg tracking-[2px] py-3 transition-all hover:bg-[#0e2440] hover:border-blue disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <svg
+                  x-show="mrSearching"
+                  class="animate-spin size-4 text-blue flex-shrink-0"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"
+                  />
+                  <path
+                    class="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                <span x-text="mrSearching ? 'LOADING…' : 'ANALYZE'"></span>
+              </button>
+            </div>
+          </div>
+
+          <!-- BAN SCAN -->
+          <div
+            class="bg-surface border border-border p-6 search-card hover:border-lose/40 flex flex-col"
+          >
+            <div class="flex items-center gap-3 mb-5">
+              <div
+                class="font-display text-[18px] tracking-[3px] text-lose card-label"
+              >
+                BAN SCAN
+              </div>
+              <div class="flex-1 h-px bg-border"></div>
+            </div>
+            <p class="font-mono text-[11px] text-muted leading-relaxed mb-4">
+              Check your match history for opponents who got banned
+            </p>
+            <div class="mt-auto">
+              <input
+                type="text"
+                x-model="banScanInput"
+                @keyup.enter="doBanScan()"
+                placeholder="your nickname"
+                autocomplete="off"
+                spellcheck="false"
+                class="w-full bg-[#0d0d0d] border border-border text-[#e8e8e8] font-mono text-[13px] px-4 py-3 outline-none transition-colors focus:border-lose placeholder-[#333] mb-3"
+              />
+              <button
+                @click="doBanScan()"
+                :disabled="banScanning"
+                class="w-full bg-[#2a0a0a] text-lose border border-[#4a1a1a] font-display text-lg tracking-[2px] py-3 transition-all hover:bg-[#3a0a0a] hover:border-lose disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <svg
+                  x-show="banScanning"
+                  class="animate-spin size-4 text-lose flex-shrink-0"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    class="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    stroke-width="4"
+                  />
+                  <path
+                    class="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                <span x-text="banScanning ? 'SCANNING…' : 'BAN SCAN'"></span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
+      <!-- ══════════════════════════════════════════════════════════════════════
+           END SEARCH FORMS
+           ══════════════════════════════════════════════════════════════════════ -->
 
       <!-- ── PROGRESS (player search) ── -->
       <div x-show="searching" x-transition class="mb-8">
@@ -1064,7 +1149,6 @@
           </svg>
           <span x-text="mrError"></span>
         </div>
-        <!-- Matchroom content is unchanged — keeping it brief here since it's already working -->
         <template x-if="mrDone && Object.keys(mrFactions).length">
           <div>
             <div class="flex items-center justify-between mb-8">
