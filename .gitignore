@@ -1,4 +1,5 @@
 src/didyoufaceit/__pycache__
+src/didyoufaceit/.DS_Store
 *.pyc
 *.pyo
 .venv/

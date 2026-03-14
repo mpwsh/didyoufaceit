@@ -246,8 +246,8 @@ async def stream_search(
     opp_id = opp_info["player_id"]
     opp_nick = opp_info["nickname"]
 
-    await upsert_player(your_id, your_nick)
-    await upsert_player(opp_id, opp_nick)
+    await upsert_player(your_id, your_nick, you_info.get("steam_id_64", ""), you_info.get("avatar", ""))
+    await upsert_player(opp_id, opp_nick, opp_info.get("steam_id_64", ""), opp_info.get("avatar", ""))
 
     # ── Step 1: history collection (smart: full scan / cache / incremental) ──
     your_match_ids, your_events, your_cached = await _collect_player_history(client, your_id, your_nick)

@@ -13,9 +13,11 @@ from collections.abc import AsyncGenerator
 
 from .api import FaceitAPIError, FaceitClient
 from .cache import (
+    get_avatars,
     get_cached_ban_status,
     get_cached_matches_bulk,
     get_nicknames,
+    get_steam_ids,
     init_db,
     save_ban_statuses_bulk,
     save_match,
@@ -165,7 +167,9 @@ async def stream_ban_scan(
 
     player_id = player["player_id"]
     player_nick = player["nickname"]
-    await upsert_player(player_id, player_nick)
+    player_steam_id = player.get("steam_id_64", "") or ""
+    player_avatar = player.get("avatar", "") or ""
+    await upsert_player(player_id, player_nick, player_steam_id, player_avatar)
 
     yield {"type": "player_resolved", "player_id": player_id, "nickname": player_nick}
 
@@ -289,9 +293,30 @@ async def stream_ban_scan(
 
     # ── Step 5: check bans (cache first, then API) ───────────────────────────
 
-    # Resolve all nicknames once for building match cards
+    # Resolve all nicknames, steam IDs, and avatars once for building match cards
     all_player_ids = list({pid for m in cached.values() if m for pids in m.get("teams", {}).values() for pid in pids})
     nick_map = await get_nicknames(all_player_ids)
+    steam_id_map = await get_steam_ids(unique_opponents)
+    avatar_map = await get_avatars(unique_opponents)
+
+    async def _resolve_profile(pid: str) -> tuple[str, str]:
+        """Get (steam_id_64, avatar) from cache, falling back to API for banned players."""
+        sid = steam_id_map.get(pid, "")
+        av = avatar_map.get(pid, "")
+        if sid and av:
+            return sid, av
+        # Missing data — fetch profile and cache it
+        try:
+            profile = await client.get_player_by_id(pid)
+            sid = profile.get("steam_id_64", "") or ""
+            av = profile.get("avatar", "") or ""
+            steam_id_map[pid] = sid
+            avatar_map[pid] = av
+            await upsert_player(pid, profile.get("nickname", pid[:8]), sid, av)
+            return sid, av
+        except Exception as e:
+            log.debug("Could not fetch profile for %s: %s", pid, e)
+            return sid, av
 
     ban_cache = await get_cached_ban_status(unique_opponents)
     to_check = [pid for pid in unique_opponents if ban_cache[pid] is None]
@@ -309,10 +334,13 @@ async def stream_ban_scan(
                 banned_count += 1
                 matches_with = opponent_matches.get(pid, [])
                 match_cards = [_build_match_card(m, player_id, nick_map) for m in matches_with]
+                sid, av = await _resolve_profile(pid)
                 yield {
                     "type": "banned_player",
                     "player_id": pid,
                     "nickname": nick_map.get(pid, pid[:8]),
+                    "steam_id_64": sid,
+                    "avatar": av,
                     "bans": bans,
                     "matches_against": len(matches_with),
                     "matches": match_cards,
@@ -355,10 +383,13 @@ async def stream_ban_scan(
                 banned_count += 1
                 matches_with = opponent_matches.get(pid, [])
                 match_cards = [_build_match_card(m, player_id, nick_map) for m in matches_with]
+                sid, av = await _resolve_profile(pid)
                 yield {
                     "type": "banned_player",
                     "player_id": pid,
                     "nickname": nick_map.get(pid, pid[:8]),
+                    "steam_id_64": sid,
+                    "avatar": av,
                     "bans": bans,
                     "matches_against": len(matches_with),
                     "matches": match_cards,

@@ -109,6 +109,32 @@
         background: currentColor;
         opacity: 0.4;
       }
+      /* Profile link icons — use CSS filter to recolor black SVGs */
+      .profile-icon {
+        filter: brightness(0) invert(0.4); /* muted gray */
+        transition: filter 0.2s ease;
+      }
+      .profile-btn--faceit:hover {
+        border-color: #ff5500 !important;
+      }
+      .profile-btn--faceit:hover .profile-icon {
+        filter: brightness(0) invert(0.55) sepia(1) saturate(20)
+          hue-rotate(3deg); /* brand orange */
+      }
+      .profile-btn--steam:hover {
+        border-color: #66c0f4 !important;
+      }
+      .profile-btn--steam:hover .profile-icon {
+        filter: brightness(0) invert(0.75) sepia(1) saturate(3)
+          hue-rotate(175deg); /* steam blue */
+      }
+      .profile-btn--rip:hover {
+        border-color: #ef4444 !important;
+      }
+      .profile-btn--rip:hover .profile-icon {
+        filter: brightness(0) invert(0.55) sepia(1) saturate(20)
+          hue-rotate(340deg); /* red */
+      }
     </style>
   </head>
   <body
@@ -621,11 +647,86 @@
                     class="w-full px-5 py-4 flex items-center justify-between hover:bg-surface-alt transition-colors text-left"
                   >
                     <div class="flex items-center gap-3 min-w-0">
+                      <!-- Avatar -->
+                      <div
+                        class="size-10 flex-shrink-0 bg-[#0d0d0d] border border-border/60 rounded overflow-hidden"
+                      >
+                        <template x-if="bp.avatar">
+                          <img
+                            :src="bp.avatar"
+                            :alt="bp.nickname"
+                            class="size-full object-cover"
+                            loading="lazy"
+                          />
+                        </template>
+                        <template x-if="!bp.avatar">
+                          <div
+                            class="size-full flex items-center justify-center text-muted font-display text-sm"
+                            x-text="bp.nickname.charAt(0).toUpperCase()"
+                          ></div>
+                        </template>
+                      </div>
                       <div class="min-w-0">
-                        <div
-                          class="font-display text-lg tracking-widest text-[#e8e8e8] truncate"
-                          x-text="bp.nickname"
-                        ></div>
+                        <!-- Nickname + profile buttons on same line -->
+                        <div class="flex items-center gap-2">
+                          <div
+                            class="font-display text-lg tracking-widest text-[#e8e8e8] truncate"
+                            x-text="bp.nickname"
+                          ></div>
+                          <!-- Profile links -->
+                          <div
+                            class="flex items-center gap-1 flex-shrink-0"
+                            @click.stop
+                          >
+                            <!-- FACEIT profile -->
+                            <a
+                              :href="'https://www.faceit.com/en/players/' + bp.nickname"
+                              target="_blank"
+                              rel="noopener"
+                              class="profile-btn profile-btn--faceit size-5 flex items-center justify-center border border-border rounded-sm transition-colors"
+                              title="FACEIT Profile"
+                            >
+                              <img
+                                src="/static/faceit.svg"
+                                class="size-2.5 profile-icon"
+                                alt="F"
+                              />
+                            </a>
+                            <!-- Steam profile -->
+                            <template x-if="bp.steam_id_64">
+                              <a
+                                :href="'https://steamcommunity.com/profiles/' + bp.steam_id_64"
+                                target="_blank"
+                                rel="noopener"
+                                class="profile-btn profile-btn--steam size-5 flex items-center justify-center border border-border rounded-sm transition-colors"
+                                title="Steam Profile"
+                              >
+                                <img
+                                  src="/static/steam.svg"
+                                  class="size-2.5 profile-icon"
+                                  alt="S"
+                                />
+                              </a>
+                            </template>
+                            <!-- Steam .rip profile -->
+                            <template x-if="bp.steam_id_64">
+                              <a
+                                :href="'https://steamcommunity.rip/profiles/' + bp.steam_id_64"
+                                target="_blank"
+                                rel="noopener"
+                                class="profile-btn profile-btn--rip size-5 flex items-center justify-center border border-border rounded-sm transition-colors"
+                                title="Steam .rip Profile"
+                              >
+                                <img
+                                  src="/static/stats.svg"
+                                  class="size-2.5 profile-icon"
+                                  alt="R"
+                                />
+                              </a>
+                            </template>
+                          </div>
+                        </div>
+                        <!-- Ban info -->
                         <div
                           class="font-mono text-[10px] text-muted flex flex-wrap gap-x-3 gap-y-1"
                         >

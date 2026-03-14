@@ -1181,6 +1181,8 @@ function app() {
                   bans: ev.bans || [],
                   matches_against: newMatches.length,
                   matches: newMatches,
+                  steam_id_64: ev.steam_id_64 || "",
+                  avatar: ev.avatar || "",
                 },
               ];
             }

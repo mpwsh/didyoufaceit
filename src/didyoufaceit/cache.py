@@ -78,9 +78,11 @@ async def init_db() -> None:
     async with pool.acquire() as conn:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS players (
-                player_id   TEXT PRIMARY KEY,
-                nickname    TEXT NOT NULL,
-                updated_at  INT DEFAULT (EXTRACT(EPOCH FROM NOW())::int)
+                player_id    TEXT PRIMARY KEY,
+                nickname     TEXT NOT NULL,
+                steam_id_64  TEXT DEFAULT '',
+                avatar       TEXT DEFAULT '',
+                updated_at   INT DEFAULT (EXTRACT(EPOCH FROM NOW())::int)
             );
 
             CREATE TABLE IF NOT EXISTS matches (
@@ -136,6 +138,29 @@ async def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_matchroom_fetched     ON matchroom_cache(fetched_at);
             CREATE INDEX IF NOT EXISTS idx_bans_recheck          ON player_bans(recheck_at);
         """)
+
+        # ── Migrations for existing databases ────────────────────────────────
+        # Add steam_id_64 to players if it doesn't exist yet
+        col_exists = await conn.fetchval("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'players' AND column_name = 'steam_id_64'
+            )
+        """)
+        if not col_exists:
+            await conn.execute("ALTER TABLE players ADD COLUMN steam_id_64 TEXT DEFAULT ''")
+            log.info("Migration: added steam_id_64 column to players table")
+
+        # Add avatar to players if it doesn't exist yet
+        avatar_exists = await conn.fetchval("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'players' AND column_name = 'avatar'
+            )
+        """)
+        if not avatar_exists:
+            await conn.execute("ALTER TABLE players ADD COLUMN avatar TEXT DEFAULT ''")
+            log.info("Migration: added avatar column to players table")
     log.info("Database schema initialized")
 
     # Start background TTL cleanup
@@ -221,37 +246,56 @@ async def cleanup_expired() -> None:
 # ── players ───────────────────────────────────────────────────────────────────
 
 
-async def upsert_player(player_id: str, nickname: str) -> None:
+async def upsert_player(player_id: str, nickname: str, steam_id_64: str = "", avatar: str = "") -> None:
     pool = await _get_pool()
     await pool.execute(
         """
-        INSERT INTO players (player_id, nickname, updated_at)
-        VALUES ($1, $2, EXTRACT(EPOCH FROM NOW())::int)
+        INSERT INTO players (player_id, nickname, steam_id_64, avatar, updated_at)
+        VALUES ($1, $2, $3, $4, EXTRACT(EPOCH FROM NOW())::int)
         ON CONFLICT (player_id) DO UPDATE SET
-            nickname   = EXCLUDED.nickname,
-            updated_at = EXCLUDED.updated_at
+            nickname    = EXCLUDED.nickname,
+            steam_id_64 = CASE WHEN EXCLUDED.steam_id_64 != '' THEN EXCLUDED.steam_id_64
+                               ELSE players.steam_id_64 END,
+            avatar      = CASE WHEN EXCLUDED.avatar != '' THEN EXCLUDED.avatar
+                               ELSE players.avatar END,
+            updated_at  = EXCLUDED.updated_at
         """,
         player_id,
         nickname,
+        steam_id_64 or "",
+        avatar or "",
     )
 
 
-async def upsert_players_bulk(players: list[tuple[str, str]]) -> None:
-    """Bulk upsert using unnest — single roundtrip instead of N."""
+async def upsert_players_bulk(players: list[tuple]) -> None:
+    """Bulk upsert using unnest — single roundtrip instead of N.
+
+    Accepts tuples of (player_id, nickname), (player_id, nickname, steam_id_64),
+    or (player_id, nickname, steam_id_64, avatar).
+    """
     if not players:
         return
-    ids, nicks = zip(*players)
+    # Normalize to 4-tuples
+    normalized = [(p[0], p[1], p[2] if len(p) > 2 else "", p[3] if len(p) > 3 else "") for p in players]
+    ids, nicks, steam_ids, avatars = zip(*normalized)
     pool = await _get_pool()
     await pool.execute(
         """
-        INSERT INTO players (player_id, nickname, updated_at)
-        SELECT unnest($1::text[]), unnest($2::text[]), EXTRACT(EPOCH FROM NOW())::int
+        INSERT INTO players (player_id, nickname, steam_id_64, avatar, updated_at)
+        SELECT unnest($1::text[]), unnest($2::text[]), unnest($3::text[]),
+               unnest($4::text[]), EXTRACT(EPOCH FROM NOW())::int
         ON CONFLICT (player_id) DO UPDATE SET
-            nickname   = EXCLUDED.nickname,
-            updated_at = EXCLUDED.updated_at
+            nickname    = EXCLUDED.nickname,
+            steam_id_64 = CASE WHEN EXCLUDED.steam_id_64 != '' THEN EXCLUDED.steam_id_64
+                               ELSE players.steam_id_64 END,
+            avatar      = CASE WHEN EXCLUDED.avatar != '' THEN EXCLUDED.avatar
+                               ELSE players.avatar END,
+            updated_at  = EXCLUDED.updated_at
         """,
         list(ids),
         list(nicks),
+        list(steam_ids),
+        list(avatars),
     )
 
 
@@ -268,6 +312,30 @@ async def get_nicknames(player_ids: list[str]) -> dict[str, str]:
         if pid not in result:
             result[pid] = pid[:8]
     return result
+
+
+async def get_steam_ids(player_ids: list[str]) -> dict[str, str]:
+    """Bulk fetch steam_id_64 for a list of player IDs. Returns {player_id: steam_id_64}."""
+    if not player_ids:
+        return {}
+    pool = await _get_pool()
+    rows = await pool.fetch(
+        "SELECT player_id, steam_id_64 FROM players WHERE player_id = ANY($1) AND steam_id_64 != ''",
+        player_ids,
+    )
+    return {r["player_id"]: r["steam_id_64"] for r in rows}
+
+
+async def get_avatars(player_ids: list[str]) -> dict[str, str]:
+    """Bulk fetch avatar URLs for a list of player IDs. Returns {player_id: avatar_url}."""
+    if not player_ids:
+        return {}
+    pool = await _get_pool()
+    rows = await pool.fetch(
+        "SELECT player_id, avatar FROM players WHERE player_id = ANY($1) AND avatar != ''",
+        player_ids,
+    )
+    return {r["player_id"]: r["avatar"] for r in rows}
 
 
 # ── matches ───────────────────────────────────────────────────────────────────
