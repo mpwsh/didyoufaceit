@@ -336,7 +336,8 @@
               <div class="flex-1 h-px bg-border"></div>
             </div>
             <p class="font-mono text-[11px] text-muted leading-relaxed mb-4">
-              Check your match history for opponents who got banned
+              Check your match history for opponents who got banned — by reason
+              and date.
             </p>
             <div class="mt-auto">
               <input
@@ -440,6 +441,40 @@
            BAN SCAN RESULTS
            ══════════════════════════════════════════════════════════════════════ -->
       <div x-show="showBanResults || banScanning" x-transition>
+        <!-- Ban scan progress bar (only on initial scan, not load-more) -->
+        <div
+          x-show="banScanning && !banScanDone && bannedPlayers.length === 0"
+          x-transition
+          class="mb-8"
+        >
+          <div class="flex justify-between items-end mb-2">
+            <span
+              class="font-mono text-[11px] tracking-[1.5px] uppercase text-muted"
+              x-text="banScanProgress.unique_opponents > 0 ? 'Checking opponents for bans…' : 'Fetching match history…'"
+            ></span>
+            <span
+              class="font-mono text-[11px] text-lose"
+              x-text="(bannedPlayers.length || 0) > 0 ? bannedPlayers.length + ' banned' : ''"
+            ></span>
+          </div>
+          <div class="h-[3px] bg-border overflow-hidden" role="progressbar">
+            <div
+              class="h-full bg-lose transition-[width] duration-300"
+              :class="!banScanProgress.unique_opponents ? 'progress-indeterminate w-[30%]' : ''"
+              :style="banScanProgress.unique_opponents > 0 ? `width: ${Math.round((banScanProgress.checked / banScanProgress.unique_opponents) * 100)}%` : ''"
+            ></div>
+          </div>
+          <div class="flex gap-6 mt-2 font-mono text-[11px] text-muted">
+            <span
+              x-text="banScanProgress.unique_opponents > 0 ? banScanProgress.checked + ' / ' + banScanProgress.unique_opponents + ' opponents checked' : 'scanning…'"
+            ></span>
+            <span
+              x-show="banScanProgress.total_matches > 0"
+              x-text="banScanProgress.total_matches + ' matches'"
+            ></span>
+          </div>
+        </div>
+
         <!-- Ban scan error -->
         <div
           x-show="banScanError"
@@ -534,7 +569,7 @@
                   <div class="w-px h-6 bg-border flex-shrink-0"></div>
                   <button
                     @click="loadMoreBans()"
-                    class="font-mono text-[11px] tracking-[1px] uppercase text-muted border border-border px-3 py-1.5 transition-colors hover:border-brand hover:text-[#e8e8e8]"
+                    class="font-mono text-[11px] tracking-[2px] uppercase text-lose border border-lose/60 px-4 py-1.5 transition-all hover:bg-[#2a0a0a] hover:border-lose hover:text-lose"
                   >
                     SCAN MORE
                   </button>
