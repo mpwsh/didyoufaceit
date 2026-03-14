@@ -96,7 +96,7 @@
     <div class="relative z-10 max-w-4xl mx-auto px-6">
       <!-- ── COLLAPSED HEADER (results visible OR searching) ── -->
       <div
-        x-show="hasAnyResults || searching || mrSearching"
+        x-show="hasAnyResults || searching || mrSearching || banScanning"
         x-transition
         class="flex items-center justify-between py-4 border-b border-border mb-8"
       >
@@ -109,7 +109,7 @@
         </a>
         <div class="flex gap-2">
           <button
-            x-show="searching || mrSearching"
+            x-show="searching || mrSearching || banScanning"
             @click="cancelSearch()"
             class="font-mono text-[11px] tracking-[2px] uppercase text-muted border border-border px-4 py-2 transition-colors hover:border-lose hover:text-lose"
           >
@@ -126,7 +126,7 @@
 
       <!-- ── FULL HEADER (no results, not searching) ── -->
       <header
-        x-show="!hasAnyResults && !searching && !mrSearching"
+        x-show="!hasAnyResults && !searching && !mrSearching && !banScanning"
         x-transition
         class="py-12 border-b border-border mb-12"
       >
@@ -146,7 +146,7 @@
 
       <!-- ── SEARCH CARD (hidden when searching or showing results) ── -->
       <div
-        x-show="!showResults && !mrDone && !searching && !mrSearching"
+        x-show="!showResults && !mrDone && !searching && !mrSearching && !showBanResults && !banScanning"
         x-transition
         class="bg-surface border border-border p-8 mb-10"
       >
@@ -189,11 +189,11 @@
         </div>
         <button
           @click="doSearch()"
-          :disabled="searching || mrSearching"
+          :disabled="searching || mrSearching || banScanning"
           class="w-full bg-brand text-white font-display text-xl tracking-[3px] py-4 transition-opacity hover:opacity-85 active:scale-[.99] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-3"
         >
           <svg
-            x-show="searching || mrSearching"
+            x-show="searching"
             class="animate-spin size-5 text-white flex-shrink-0"
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
@@ -213,10 +213,10 @@
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
             />
           </svg>
-          <span
-            x-text="(searching || mrSearching) ? 'SEARCHING…' : 'SEARCH'"
-          ></span>
+          <span x-text="searching ? 'SEARCHING…' : 'SEARCH'"></span>
         </button>
+
+        <!-- Matchroom divider -->
         <div class="flex items-center gap-4 mt-6">
           <div class="flex-1 h-px bg-border"></div>
           <span
@@ -236,6 +236,56 @@
             class="w-full bg-[#0d0d0d] border border-border text-[#e8e8e8] font-mono text-[13px] px-4 py-3 outline-none transition-colors focus:border-brand placeholder-[#333]"
           />
         </div>
+
+        <!-- Ban scan divider -->
+        <div class="flex items-center gap-4 mt-6">
+          <div class="flex-1 h-px bg-border"></div>
+          <span
+            class="font-mono text-[10px] tracking-[2px] uppercase text-muted"
+            >or find banned opponents</span
+          >
+          <div class="flex-1 h-px bg-border"></div>
+        </div>
+        <div class="mt-4 flex gap-3">
+          <input
+            type="text"
+            x-model="banScanInput"
+            @keyup.enter="doBanScan()"
+            placeholder="your nickname"
+            autocomplete="off"
+            spellcheck="false"
+            class="flex-1 bg-[#0d0d0d] border border-border text-[#e8e8e8] font-mono text-[13px] px-4 py-3 outline-none transition-colors focus:border-lose placeholder-[#333]"
+          />
+          <button
+            @click="doBanScan()"
+            :disabled="banScanning"
+            class="bg-[#2a0a0a] text-lose border border-[#4a1a1a] font-display text-lg tracking-[2px] px-6 py-3 transition-all hover:bg-[#3a0a0a] hover:border-lose disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <svg
+              x-show="banScanning"
+              class="animate-spin size-4 text-lose flex-shrink-0"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              />
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
+            </svg>
+            <span x-text="banScanning ? 'SCANNING…' : 'BAN SCAN'"></span>
+          </button>
+        </div>
+
         <div
           x-show="cacheNotice"
           x-transition
@@ -249,7 +299,7 @@
         </div>
       </div>
 
-      <!-- ── PROGRESS ── -->
+      <!-- ── PROGRESS (player search) ── -->
       <div x-show="searching" x-transition class="mb-8">
         <div class="flex justify-between items-end mb-2">
           <span
@@ -301,7 +351,289 @@
         <span x-text="errorMsg"></span>
       </div>
 
-      <!-- ── PLAYER VS PLAYER RESULTS ── -->
+      <!-- ══════════════════════════════════════════════════════════════════════
+           BAN SCAN RESULTS
+           ══════════════════════════════════════════════════════════════════════ -->
+      <div x-show="showBanResults || banScanning" x-transition>
+        <!-- Ban scan error -->
+        <div
+          x-show="banScanError"
+          x-transition
+          class="flex gap-3 items-start bg-[#1a0a0a] border border-[#4a1a1a] text-lose font-mono text-[13px] p-4 mb-6"
+          role="alert"
+        >
+          <svg
+            class="size-4 mt-[1px] flex-shrink-0"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          <span x-text="banScanError"></span>
+        </div>
+
+        <!-- Ban scan summary header -->
+        <template x-if="bannedPlayers.length > 0 || banScanDone">
+          <div>
+            <div class="flex items-center gap-4 mb-2">
+              <div class="font-display text-2xl tracking-widest">BAN SCAN</div>
+              <span
+                class="font-mono text-[11px] bg-[#2a0a0a] text-lose border border-[#4a1a1a] px-2.5 py-0.5 rounded-sm"
+                x-text="banScanNick"
+              ></span>
+              <div class="flex-1 h-px bg-border"></div>
+            </div>
+
+            <!-- Summary stats + load more -->
+            <div
+              class="bg-surface border border-border px-6 py-4 mb-6 flex flex-wrap items-center gap-x-6 gap-y-2"
+            >
+              <div class="flex items-center gap-2">
+                <span
+                  class="font-display text-[28px] leading-none text-lose"
+                  x-text="filteredBannedPlayers.length"
+                ></span>
+                <div>
+                  <div
+                    class="font-mono text-[10px] tracking-[2px] uppercase text-muted"
+                  >
+                    banned
+                  </div>
+                  <div
+                    class="font-mono text-[10px] tracking-[2px] uppercase text-muted"
+                    x-text="filteredBannedPlayers.length === 1 ? 'opponent' : 'opponents'"
+                  ></div>
+                </div>
+              </div>
+              <div class="w-px h-8 bg-border flex-shrink-0"></div>
+              <div class="font-mono text-[11px] text-muted">
+                <span x-text="banScanProgress.checked"></span> players checked
+                across
+                <span x-text="banScanProgress.total_matches"></span> matches
+              </div>
+              <template x-if="banScanning">
+                <div class="flex items-center gap-2">
+                  <div class="w-px h-6 bg-border flex-shrink-0"></div>
+                  <svg
+                    class="animate-spin size-3.5 text-muted flex-shrink-0"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      class="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      stroke-width="4"
+                    />
+                    <path
+                      class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                  <span
+                    class="font-mono text-[11px] text-muted"
+                    x-text="banScanProgress.unique_opponents > 0 ? banScanProgress.checked + ' / ' + banScanProgress.unique_opponents + ' opponents' : 'scanning…'"
+                  ></span>
+                </div>
+              </template>
+              <template x-if="banScanHasMore && !banScanning">
+                <div class="flex items-center gap-3">
+                  <div class="w-px h-6 bg-border flex-shrink-0"></div>
+                  <button
+                    @click="loadMoreBans()"
+                    class="font-mono text-[11px] tracking-[1px] uppercase text-muted border border-border px-3 py-1.5 transition-colors hover:border-brand hover:text-[#e8e8e8]"
+                  >
+                    SCAN MORE
+                  </button>
+                </div>
+              </template>
+              <template x-if="banScanDone && bannedPlayers.length === 0">
+                <div
+                  class="font-mono text-[12px] text-win flex items-center gap-2"
+                >
+                  <svg class="size-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path
+                      fill-rule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clip-rule="evenodd"
+                    />
+                  </svg>
+                  No banned opponents found!
+                </div>
+              </template>
+            </div>
+
+            <!-- Reason filter (hidden during scan to avoid Alpine x-for conflicts) -->
+            <template x-if="!banScanning && availableBanReasons.length > 1">
+              <div class="mb-4 flex items-center gap-2 flex-wrap">
+                <span
+                  class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-14 flex-shrink-0"
+                  >REASON</span
+                >
+                <template x-for="reason in availableBanReasons" :key="reason">
+                  <button
+                    @click="banFilterReason = reason"
+                    :class="banFilterReason === reason ? 'bg-[#4a1a1a] text-lose border-lose' : 'bg-surface border-border text-muted hover:border-lose hover:text-[#e8e8e8]'"
+                    class="font-mono text-[10px] tracking-[1px] uppercase border px-2.5 py-1 transition-colors"
+                    x-text="banReasonLabel(reason)"
+                  ></button>
+                </template>
+              </div>
+            </template>
+
+            <!-- Banned player cards -->
+            <div class="flex flex-col gap-3 mb-6">
+              <template x-for="bp in filteredBannedPlayers" :key="bp.player_id">
+                <div
+                  class="bg-surface border border-border overflow-hidden card-enter"
+                >
+                  <!-- Player header (clickable to expand) -->
+                  <button
+                    @click="toggleBanPlayer(bp.player_id)"
+                    class="w-full px-5 py-4 flex items-center justify-between hover:bg-surface-alt transition-colors text-left"
+                  >
+                    <div class="flex items-center gap-3 min-w-0">
+                      <div class="min-w-0">
+                        <div
+                          class="font-display text-lg tracking-widest text-[#e8e8e8] truncate"
+                          x-text="bp.nickname"
+                        ></div>
+                        <div
+                          class="font-mono text-[10px] text-muted flex flex-wrap gap-x-3 gap-y-1"
+                        >
+                          <template
+                            x-for="(ban, banIdx) in bp.bans"
+                            :key="bp.player_id + '-' + banIdx"
+                          >
+                            <span class="flex items-center gap-1">
+                              <span
+                                class="text-[#b05050]"
+                                x-text="fmtBanReason(ban.reason)"
+                              ></span>
+                              <span class="text-[#444]">·</span>
+                              <span x-text="fmtBanDate(ban.starts_at)"></span>
+                              <template x-if="ban.ends_at">
+                                <span>
+                                  <span class="text-[#444]">→</span>
+                                  <span x-text="fmtBanDate(ban.ends_at)"></span>
+                                </span>
+                              </template>
+                              <template x-if="!ban.ends_at">
+                                <span class="text-lose font-medium"
+                                  >PERMANENT</span
+                                >
+                              </template>
+                            </span>
+                          </template>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-3 flex-shrink-0">
+                      <span
+                        class="font-mono text-[11px] text-muted"
+                        x-text="bp.matches_against + ' match' + (bp.matches_against !== 1 ? 'es' : '')"
+                      ></span>
+                      <svg
+                        class="size-4 text-muted transition-transform"
+                        :class="banScanExpandedPlayer === bp.player_id ? 'rotate-180' : ''"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        stroke-width="2"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </div>
+                  </button>
+
+                  <!-- Expanded: match cards -->
+                  <div
+                    x-show="banScanExpandedPlayer === bp.player_id"
+                    x-transition
+                    class="border-t border-border"
+                  >
+                    <div class="px-3 py-3 flex flex-col gap-2">
+                      <template x-for="m in bp.matches" :key="m.match_id">
+                        <a
+                          :href="m.faceit_url || '#'"
+                          target="_blank"
+                          rel="noopener"
+                          class="bg-[#0d0d0d] border border-border px-4 py-3 grid grid-cols-[72px_1fr_auto] gap-4 items-center transition-colors hover:border-brand no-underline text-[#e8e8e8] block"
+                        >
+                          <div
+                            class="font-mono text-[11px] text-muted leading-relaxed"
+                          >
+                            <span x-text="matchDate(m)[0]"></span><br />
+                            <span x-text="matchDate(m)[1]"></span>
+                          </div>
+                          <div class="flex flex-col gap-1 min-w-0">
+                            <div class="flex items-center gap-2">
+                              <span
+                                class="font-display text-lg tracking-widest"
+                                x-text="matchMap(m)"
+                              ></span>
+                              <template x-if="matchIsTournament(m)">
+                                <span
+                                  class="font-mono text-[9px] tracking-[1px] uppercase text-gold bg-[#1a1200] border border-[#3a2800] px-1.5 py-0.5 rounded-sm truncate max-w-[200px]"
+                                  x-text="'🏆 ' + matchTournamentLabel(m)"
+                                ></span>
+                              </template>
+                            </div>
+                            <div
+                              class="font-mono text-[11px] text-muted truncate"
+                            >
+                              <template
+                                x-for="(p, pi) in banMatchRoster(m)"
+                                :key="p.name + pi"
+                              >
+                                <span>
+                                  <span :class="p.cls" x-text="p.name"></span>
+                                  <span
+                                    x-show="pi < banMatchRoster(m).length - 1"
+                                    >,
+                                  </span>
+                                </span>
+                              </template>
+                            </div>
+                          </div>
+                          <div class="text-right flex-shrink-0">
+                            <div
+                              class="font-display text-[22px] tracking-widest leading-none"
+                              :class="matchScore(m).cls"
+                              x-text="matchScore(m).label"
+                            ></div>
+                            <div
+                              class="font-mono text-[10px] tracking-[1px] uppercase mt-0.5"
+                              :class="matchScore(m).win === true ? 'text-win' : matchScore(m).win === false ? 'text-lose' : 'text-muted'"
+                              x-text="matchScore(m).win === true ? 'win' : matchScore(m).win === false ? 'loss' : 'draw'"
+                            ></div>
+                          </div>
+                        </a>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════════════════
+           PLAYER VS PLAYER RESULTS (unchanged from original)
+           ══════════════════════════════════════════════════════════════════════ -->
       <div x-show="showResults" x-transition>
         <!-- SCOREBOARD -->
         <div
@@ -434,7 +766,7 @@
           >
         </div>
 
-        <!-- ── BEST LINEUPS (above matches, ranked by Wilson score) ── -->
+        <!-- ── BEST LINEUPS ── -->
         <template x-if="bestLineups.length > 0">
           <div class="mb-8" x-data="{ showAllLineups: false }">
             <div class="flex items-center gap-4 mb-4">
@@ -550,7 +882,7 @@
           </div>
         </template>
 
-        <!-- ── ENEMIES (native Alpine templates — no x-html) ── -->
+        <!-- ── ENEMIES ── -->
         <template x-if="enemies.length > 0 || !searching">
           <div>
             <div class="flex items-center gap-4 mb-4 mt-6">
@@ -570,8 +902,9 @@
                   class="bg-surface border border-border px-5 py-3.5 grid grid-cols-[72px_1fr_auto] gap-4 items-center transition-colors hover:border-brand no-underline text-[#e8e8e8] card-enter block"
                 >
                   <div class="font-mono text-[11px] text-muted leading-relaxed">
-                    <span x-text="matchDate(m)[0]"></span><br />
-                    <span x-text="matchDate(m)[1]"></span>
+                    <span x-text="matchDate(m)[0]"></span><br /><span
+                      x-text="matchDate(m)[1]"
+                    ></span>
                   </div>
                   <div class="flex flex-col gap-1 min-w-0">
                     <div class="flex items-center gap-2">
@@ -616,10 +949,7 @@
               </template>
               <template x-if="filteredEnemies.length > enemiesShown">
                 <div
-                  x-init="
-                  let ob = new IntersectionObserver(([e]) => { if (e.isIntersecting) enemiesShown += 25 }, { rootMargin: '200px' });
-                  ob.observe($el);
-                "
+                  x-init="let ob = new IntersectionObserver(([e]) => { if (e.isIntersecting) enemiesShown += 25 }, { rootMargin: '200px' }); ob.observe($el);"
                   class="font-mono text-[11px] text-muted py-3 text-center blink"
                 >
                   loading more…
@@ -651,8 +981,9 @@
                   class="bg-surface border border-border px-5 py-3.5 grid grid-cols-[72px_1fr_auto] gap-4 items-center transition-colors hover:border-brand no-underline text-[#e8e8e8] card-enter block"
                 >
                   <div class="font-mono text-[11px] text-muted leading-relaxed">
-                    <span x-text="matchDate(m)[0]"></span><br />
-                    <span x-text="matchDate(m)[1]"></span>
+                    <span x-text="matchDate(m)[0]"></span><br /><span
+                      x-text="matchDate(m)[1]"
+                    ></span>
                   </div>
                   <div class="flex flex-col gap-1 min-w-0">
                     <div class="flex items-center gap-2">
@@ -697,10 +1028,7 @@
               </template>
               <template x-if="filteredTeammates.length > teammatesShown">
                 <div
-                  x-init="
-                  let ob = new IntersectionObserver(([e]) => { if (e.isIntersecting) teammatesShown += 25 }, { rootMargin: '200px' });
-                  ob.observe($el);
-                "
+                  x-init="let ob = new IntersectionObserver(([e]) => { if (e.isIntersecting) teammatesShown += 25 }, { rootMargin: '200px' }); ob.observe($el);"
                   class="font-mono text-[11px] text-muted py-3 text-center blink"
                 >
                   loading more…
@@ -736,7 +1064,7 @@
           </svg>
           <span x-text="mrError"></span>
         </div>
-
+        <!-- Matchroom content is unchanged — keeping it brief here since it's already working -->
         <template x-if="mrDone && Object.keys(mrFactions).length">
           <div>
             <div class="flex items-center justify-between mb-8">
@@ -752,7 +1080,6 @@
                 ></span>
               </div>
             </div>
-
             <!-- MAP ADVANTAGE -->
             <template
               x-if="mrMapRecommendation.length > 0 && mrFactionKeys.length >= 2"
@@ -780,7 +1107,6 @@
                   </div>
                   <div class="flex-1 h-px bg-border"></div>
                 </div>
-                <!-- Team labels -->
                 <div class="grid grid-cols-2 gap-2 mb-3">
                   <div
                     class="flex items-center gap-2 font-mono text-[10px] tracking-wide"
@@ -801,7 +1127,6 @@
                     ></span>
                   </div>
                 </div>
-                <!-- Column headers -->
                 <div class="grid grid-cols-2 divide-x divide-border/30 mb-1">
                   <div class="px-3">
                     <div
@@ -824,7 +1149,6 @@
                     </div>
                   </div>
                 </div>
-                <!-- Map rows -->
                 <div class="flex flex-col gap-2">
                   <template
                     x-for="(row, idx) in mrMapRecommendation"
@@ -834,7 +1158,6 @@
                       class="bg-surface border border-border overflow-hidden"
                       :class="idx === 0 ? 'border-win/30' : idx === mrMapRecommendation.length - 1 ? 'border-lose/30' : ''"
                     >
-                      <!-- Map header -->
                       <div
                         class="flex items-center justify-between px-4 py-2 border-b border-border/50"
                         :class="idx === 0 ? 'bg-[#0a1a0a]' : idx === mrMapRecommendation.length - 1 ? 'bg-[#1a0a0a]' : 'bg-surface-alt'"
@@ -889,7 +1212,6 @@
                           ></span>
                         </div>
                       </div>
-                      <!-- Player panels (modular — same structure both sides) -->
                       <div class="grid grid-cols-2 divide-x divide-border/50">
                         <template
                           x-for="contribs in [row.f1contribs, row.f2contribs]"

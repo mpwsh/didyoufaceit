@@ -121,6 +121,57 @@ function friendlyError(msg) {
   );
 }
 
+function fmtBanReason(reason) {
+  if (!reason) return "Unknown";
+  return reason.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Normalize reason strings for filtering — FACEIT uses inconsistent casing/separators
+function normalizeBanReason(reason) {
+  if (!reason) return "unknown";
+  const r = reason.toLowerCase().trim();
+
+  // Group smurf-related bans
+  if (r.includes("smurf") || r.includes("multiple accounts")) return "smurfing";
+  // Group cheating
+  if (r.includes("cheat")) return "cheating";
+  // Group verbal/offensive
+  if (r.includes("verbal abuse") || r.includes("offensive language"))
+    return "verbal abuse";
+  // Group unsportsmanlike
+  if (
+    r.includes("unsportsmanlike") ||
+    r.includes("griefing") ||
+    r.includes("ghosting")
+  )
+    return "unsportsmanlike conduct";
+  // Platform abuse
+  if (r.includes("platform abuse")) return "platform abuse";
+
+  // Fallback: clean up the raw string
+  return r.replace(/_/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// Display label for a normalized reason
+function banReasonLabel(normalized) {
+  if (!normalized) return "Unknown";
+  return normalized.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function fmtBanDate(dateStr) {
+  if (!dateStr) return "—";
+  try {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
 // ── Alpine app ────────────────────────────────────────────────────────────────
 
 function app() {
@@ -129,6 +180,7 @@ function app() {
     youInput: "",
     oppInput: "",
     matchroomInput: "",
+    banScanInput: "",
 
     // matchroom state
     mrMatchId: "",
@@ -165,6 +217,27 @@ function app() {
     enemiesShown: 25,
     teammatesShown: 25,
 
+    // ── Ban scan state ────────────────────────────────────────────────────
+    banScanning: false,
+    banScanNick: "",
+    banScanStatus: "Connecting…",
+    banScanError: "",
+    banScanDone: false,
+    banScanProgress: {
+      checked: 0,
+      unique_opponents: 0,
+      banned_found: 0,
+      total_matches: 0,
+    },
+    bannedPlayers: [], // array of {player_id, nickname, bans, matches_against, matches}
+    banScanHasMore: false,
+    banScanNextBeforeTs: null,
+    banScanTotalBanned: 0,
+    banScanExpandedPlayer: null, // player_id of currently expanded card, null = all collapsed
+    banFilterReason: "all", // filter by ban reason
+    banKnownReasons: [], // stable list — only grows, never rebuilt mid-scan
+    _banEs: null,
+
     // ── CACHED computed results (only recalculated on demand, not on every SSE event) ──
     _cache: {},
     _cacheVersion: 0,
@@ -187,9 +260,16 @@ function app() {
     get showResults() {
       return this.enemies.length > 0 || this.teammates.length > 0;
     },
+    get showBanResults() {
+      return this.banScanDone || this.banScanning || this.banScanError;
+    },
     get hasAnyResults() {
       return (
-        this.showResults || this.mrDone || this.mrSearching || this.mrError
+        this.showResults ||
+        this.mrDone ||
+        this.mrSearching ||
+        this.mrError ||
+        this.showBanResults
       );
     },
     get progressPct() {
@@ -198,6 +278,12 @@ function app() {
             100,
             Math.round((this.progressChecked / this.progressTotal) * 100),
           )
+        : 0;
+    },
+    get banProgressPct() {
+      const p = this.banScanProgress;
+      return p.unique_opponents > 0
+        ? Math.min(100, Math.round((p.checked / p.unique_opponents) * 100))
         : 0;
     },
 
@@ -404,6 +490,36 @@ function app() {
       }));
     },
 
+    // Ban scan helpers
+    banMatchRoster(m) {
+      return (m.teams[m.your_team] || []).map((n) => ({
+        name: n,
+        cls: n === this.banScanNick ? "text-brand" : "",
+      }));
+    },
+
+    get availableBanReasons() {
+      if (this.banKnownReasons.length === 0) return [];
+      return ["all", ...this.banKnownReasons];
+    },
+
+    banReasonLabel(reason) {
+      return reason === "all"
+        ? `All (${this.bannedPlayers.length})`
+        : banReasonLabel(reason);
+    },
+
+    get filteredBannedPlayers() {
+      // During scanning, always show all — filtering happens after done
+      if (this.banScanning || this.banFilterReason === "all")
+        return this.bannedPlayers;
+      return this.bannedPlayers.filter((bp) =>
+        bp.bans.some(
+          (b) => normalizeBanReason(b.reason) === this.banFilterReason,
+        ),
+      );
+    },
+
     // ── Matchroom computed ──────────────────────────────────────────────────
 
     mrMapName(id) {
@@ -435,7 +551,6 @@ function app() {
             elo: p.elo || 0,
             level,
             kd: ms.kd || 0,
-            // Composite strength: Wilson-adjusted WR × K/D factor × level factor
             strength: playerMapStrength(
               ms.wins,
               ms.matches,
@@ -447,14 +562,11 @@ function app() {
         .sort((a, b) => b.strength - a.strength);
     },
 
-    // Team composite score for a map (average of player strengths, 0 if no data)
     mrTeamScore(faction, mapId) {
       const contribs = this.mrPlayerContribs(faction, mapId);
       const totalPlayers =
         (this.mrFactions[faction]?.players || []).length || 5;
       if (!contribs.length) return null;
-      // Average strength, but divide by TOTAL roster size (not just players with data)
-      // This way a team with 1/5 players having data gets 1/5th the score, not full score
       const sum = contribs.reduce((s, c) => s + c.strength, 0);
       return Math.round((sum / totalPlayers) * 100);
     },
@@ -511,12 +623,9 @@ function app() {
         const rawDelta = (f1score || 0) - (f2score || 0);
         const f1d = this.mrTeamDepth(f1, mapId),
           f2d = this.mrTeamDepth(f2, mapId);
-        // Flag as low data if either team has fewer than 3 players with data
         const lowData = f1d.withData < 3 || f2d.withData < 3;
-        // Confidence multiplier: dampen delta when data is sparse
-        // Both teams full data (5/5) = 1.0, one team 1/5 = 0.2
         const minCoverage = Math.min(f1d.withData, f2d.withData) / 5;
-        const confidence = 0.2 + 0.8 * minCoverage; // floor at 0.2 so it doesn't vanish
+        const confidence = 0.2 + 0.8 * minCoverage;
         const adjustedDelta = Math.round(rawDelta * confidence);
         rows.push({
           id: mapId,
@@ -549,13 +658,37 @@ function app() {
       const room = p.get("room")?.trim();
       const a = p.get("a")?.trim();
       const b = p.get("b")?.trim();
+      const ban = p.get("ban")?.trim();
       if (room) {
         this.matchroomInput = room;
         this.$nextTick(() => this.doSearch());
+      } else if (ban) {
+        this.banScanInput = ban;
+        this.$nextTick(() => this.doBanScan());
       } else {
         if (a) this.youInput = a;
         if (b) this.oppInput = b;
         if (a && b) this.$nextTick(() => this.doSearch());
+      }
+
+      // Clean up all SSE connections when the user closes/navigates away
+      window.addEventListener("beforeunload", () => {
+        this._closeAllStreams();
+      });
+    },
+
+    _closeAllStreams() {
+      if (this._es) {
+        this._es.close();
+        this._es = null;
+      }
+      if (this._mrEs) {
+        this._mrEs.close();
+        this._mrEs = null;
+      }
+      if (this._banEs) {
+        this._banEs.close();
+        this._banEs = null;
       }
     },
 
@@ -599,11 +732,38 @@ function app() {
       this._invalidate();
     },
 
+    _resetBanScan() {
+      if (this._banEs) {
+        this._banEs.close();
+        this._banEs = null;
+      }
+      this.banScanning = false;
+      this.banScanNick = "";
+      this.banScanStatus = "Connecting…";
+      this.banScanError = "";
+      this.banScanDone = false;
+      this.banScanProgress = {
+        checked: 0,
+        unique_opponents: 0,
+        banned_found: 0,
+        total_matches: 0,
+      };
+      this.bannedPlayers = [];
+      this.banScanHasMore = false;
+      this.banScanNextBeforeTs = null;
+      this.banScanTotalBanned = 0;
+      this.banScanExpandedPlayer = null;
+      this.banFilterReason = "all";
+      this.banKnownReasons = [];
+    },
+
     newSearch() {
       this.cancelSearch();
       this._resetMatchroom();
       this._resetPlayerSearch();
+      this._resetBanScan();
       this.matchroomInput = "";
+      this.banScanInput = "";
       const url = new URL(window.location);
       url.search = "";
       window.history.replaceState({}, "", url);
@@ -619,6 +779,10 @@ function app() {
         this._mrEs.close();
         this._mrEs = null;
       }
+      if (this._banEs) {
+        this._banEs.close();
+        this._banEs = null;
+      }
       // Flush any buffered matches
       this._flushMatches();
       if (this._flushTimer) {
@@ -627,6 +791,7 @@ function app() {
       }
       this.searching = false;
       this.mrSearching = false;
+      this.banScanning = false;
       this._invalidate();
     },
 
@@ -636,6 +801,10 @@ function app() {
     _flushTimer: null,
 
     doSearch() {
+      if (this.banScanInput.trim()) {
+        this.doBanScan();
+        return;
+      }
       if (this.matchroomInput.trim()) {
         this.doMatchroom();
         return;
@@ -648,6 +817,7 @@ function app() {
       }
 
       this._resetMatchroom();
+      this._resetBanScan();
       if (this._es) {
         this._es.close();
         this._es = null;
@@ -670,6 +840,7 @@ function app() {
 
       const url = new URL(window.location);
       url.searchParams.delete("room");
+      url.searchParams.delete("ban");
       url.searchParams.set("a", you);
       url.searchParams.set("b", opp);
       window.history.replaceState({}, "", url);
@@ -718,7 +889,6 @@ function app() {
               competition_type: ev.competition_type || "",
               competition_name: ev.competition_name || "",
             });
-            // Buffer matches and flush in batches to reduce reactive updates
             this._pendingMatches.push(slim);
             if (!this._flushTimer) {
               this._flushTimer = setTimeout(() => {
@@ -729,7 +899,7 @@ function app() {
             break;
           }
           case "done":
-            this._flushMatches(); // flush any remaining
+            this._flushMatches();
             if (this._flushTimer) {
               clearTimeout(this._flushTimer);
               this._flushTimer = null;
@@ -783,7 +953,6 @@ function app() {
       if (newEnemies.length) this.enemies = [...this.enemies, ...newEnemies];
       if (newTeammates.length)
         this.teammates = [...this.teammates, ...newTeammates];
-      // Don't invalidate cache during streaming — too expensive
     },
 
     _finalize(ev) {
@@ -805,6 +974,7 @@ function app() {
       let raw = this.matchroomInput.trim();
       if (!raw) return;
       this._resetPlayerSearch();
+      this._resetBanScan();
       if (raw.includes("room/"))
         raw = raw.split("room/").pop().split("?")[0].split("/")[0].trim();
       this.mrMatchId = raw;
@@ -819,6 +989,7 @@ function app() {
       const url = new URL(window.location);
       url.searchParams.delete("a");
       url.searchParams.delete("b");
+      url.searchParams.delete("ban");
       url.searchParams.set("room", raw);
       window.history.replaceState({}, "", url);
 
@@ -902,6 +1073,173 @@ function app() {
         es.close();
         this._mrEs = null;
       };
+    },
+
+    // ── SSE: Ban Scan ────────────────────────────────────────────────────────
+
+    doBanScan(loadMoreBeforeTs) {
+      const nick = this.banScanInput.trim();
+      if (!nick) return;
+
+      const isLoadMore = typeof loadMoreBeforeTs === "number";
+
+      this._resetMatchroom();
+      this._resetPlayerSearch();
+
+      // Save previous totals so we can accumulate across pages
+      const prevChecked = isLoadMore ? this.banScanProgress.checked : 0;
+      const prevOpponents = isLoadMore
+        ? this.banScanProgress.unique_opponents
+        : 0;
+      const prevMatches = isLoadMore ? this.banScanProgress.total_matches : 0;
+
+      if (!isLoadMore) {
+        // Fresh scan
+        this._resetBanScan();
+        this.banScanNick = nick;
+      }
+
+      // Close any existing ban scan stream
+      if (this._banEs) {
+        this._banEs.close();
+        this._banEs = null;
+      }
+
+      this.banScanning = true;
+      this.banScanError = "";
+      this.banScanDone = false;
+      this.banScanStatus = isLoadMore ? "Loading more matches…" : "Connecting…";
+
+      const url = new URL(window.location);
+      url.searchParams.delete("a");
+      url.searchParams.delete("b");
+      url.searchParams.delete("room");
+      url.searchParams.set("ban", nick);
+      window.history.replaceState({}, "", url);
+
+      let apiUrl = `/api/banscan?player=${encodeURIComponent(nick)}&limit=100`;
+      if (isLoadMore) apiUrl += `&before=${loadMoreBeforeTs}`;
+      const es = new EventSource(apiUrl);
+      this._banEs = es;
+
+      es.onmessage = (e) => {
+        let ev;
+        try {
+          ev = JSON.parse(e.data);
+        } catch {
+          return;
+        }
+
+        switch (ev.type) {
+          case "status":
+            this.banScanStatus = ev.msg;
+            break;
+          case "player_resolved":
+            this.banScanNick = ev.nickname;
+            break;
+          case "progress":
+            this.banScanProgress = {
+              checked: prevChecked + (ev.checked || 0),
+              unique_opponents: prevOpponents + (ev.unique_opponents || 0),
+              banned_found: this.bannedPlayers.length,
+              total_matches: prevMatches + (ev.total_matches || 0),
+            };
+            this.banScanTotalBanned = this.bannedPlayers.length;
+            break;
+          case "banned_player": {
+            const newMatches = (ev.matches || []).sort(
+              (a, b) => b.started_at - a.started_at,
+            );
+            const existingIdx = this.bannedPlayers.findIndex(
+              (x) => x.player_id === ev.player_id,
+            );
+            if (existingIdx !== -1) {
+              // Merge: add new match_ids we haven't seen yet
+              const existing = this.bannedPlayers[existingIdx];
+              const knownIds = new Set(existing.matches.map((m) => m.match_id));
+              const added = newMatches.filter((m) => !knownIds.has(m.match_id));
+              if (added.length > 0) {
+                const merged = [...existing.matches, ...added].sort(
+                  (a, b) => b.started_at - a.started_at,
+                );
+                const updated = {
+                  ...existing,
+                  matches: merged,
+                  matches_against: merged.length,
+                };
+                const arr = [...this.bannedPlayers];
+                arr[existingIdx] = updated;
+                this.bannedPlayers = arr;
+              }
+            } else {
+              // New player — append
+              this.bannedPlayers = [
+                ...this.bannedPlayers,
+                {
+                  player_id: ev.player_id,
+                  nickname: ev.nickname,
+                  bans: ev.bans || [],
+                  matches_against: newMatches.length,
+                  matches: newMatches,
+                },
+              ];
+            }
+            this.banScanTotalBanned = this.bannedPlayers.length;
+            for (const b of ev.bans || []) {
+              const norm = normalizeBanReason(b.reason);
+              if (norm && !this.banKnownReasons.includes(norm)) {
+                this.banKnownReasons = [...this.banKnownReasons, norm];
+              }
+            }
+            break;
+          }
+          case "done":
+            // Sort once when streaming is complete — safe because no more SSE events
+            this.bannedPlayers = [...this.bannedPlayers].sort((a, b) => {
+              const aDate = a.matches[0]?.started_at || 0;
+              const bDate = b.matches[0]?.started_at || 0;
+              return bDate - aDate;
+            });
+            this.banScanning = false;
+            this.banScanDone = true;
+            this.banScanHasMore = ev.has_more || false;
+            this.banScanNextBeforeTs = ev.next_before_ts || null;
+            es.close();
+            this._banEs = null;
+            break;
+          case "cancelled":
+            this.banScanning = false;
+            this.banScanDone = true;
+            es.close();
+            this._banEs = null;
+            break;
+          case "error":
+            this.banScanning = false;
+            this.banScanError = friendlyError(ev.msg);
+            es.close();
+            this._banEs = null;
+            break;
+        }
+      };
+
+      es.onerror = () => {
+        if (es.readyState === EventSource.CLOSED) return;
+        this.banScanning = false;
+        this.banScanError = "Connection lost. Please try again.";
+        es.close();
+        this._banEs = null;
+      };
+    },
+
+    loadMoreBans() {
+      if (this.banScanNextBeforeTs !== null) {
+        this.doBanScan(this.banScanNextBeforeTs);
+      }
+    },
+
+    toggleBanPlayer(playerId) {
+      this.banScanExpandedPlayer =
+        this.banScanExpandedPlayer === playerId ? null : playerId;
     },
   };
 }

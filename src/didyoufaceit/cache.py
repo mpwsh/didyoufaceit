@@ -22,10 +22,18 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://didyou:didyou@localh
 # ── TTL configuration ─────────────────────────────────────────────────────────
 
 STATS_TTL_SECONDS = 3 * 24 * 3600  # 3 days  — player lifetime stats
-MATCHROOM_TTL_SECONDS = 30 * 24 * 3600  # 30 days  — matchroom snapshots
+MATCHROOM_TTL_SECONDS = 7 * 24 * 3600  # 7 days  — matchroom snapshots
 MATCH_TTL_SECONDS = 90 * 24 * 3600  # 90 days — individual match data
 PLAYER_TTL_SECONDS = 30 * 24 * 3600  # 30 days — player nickname cache
 SCAN_TTL_SECONDS = 6 * 3600  # 6 hours — before re-fetching recent history
+
+# Ban cache — per-player adaptive TTL:
+#   Clean player     → re-check after 7 days
+#   Active ban       → re-check after ban expires (ban_end + small buffer)
+#   Permanent ban    → re-check every 90 days
+BAN_CLEAN_TTL_SECONDS = 7 * 24 * 3600
+BAN_PERMANENT_TTL_SECONDS = 90 * 24 * 3600
+BAN_EXPIRY_BUFFER_SECONDS = 6 * 3600  # re-check 6h after a ban is supposed to lift
 
 CLEANUP_INTERVAL_SECONDS = 6 * 3600  # run cleanup every 6 hours
 
@@ -112,12 +120,21 @@ async def init_db() -> None:
                 fetched_at    INT DEFAULT (EXTRACT(EPOCH FROM NOW())::int)
             );
 
+            CREATE TABLE IF NOT EXISTS player_bans (
+                player_id    TEXT PRIMARY KEY,
+                is_banned    BOOLEAN NOT NULL DEFAULT FALSE,
+                bans_json    JSONB DEFAULT '[]'::jsonb,
+                checked_at   INT DEFAULT (EXTRACT(EPOCH FROM NOW())::int),
+                recheck_at   INT DEFAULT (EXTRACT(EPOCH FROM NOW())::int)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_player_matches_player ON player_matches(player_id);
             CREATE INDEX IF NOT EXISTS idx_player_matches_match  ON player_matches(match_id);
             CREATE INDEX IF NOT EXISTS idx_matches_fetched       ON matches(fetched_at);
             CREATE INDEX IF NOT EXISTS idx_players_updated       ON players(updated_at);
             CREATE INDEX IF NOT EXISTS idx_stats_fetched         ON player_stats_cache(fetched_at);
             CREATE INDEX IF NOT EXISTS idx_matchroom_fetched     ON matchroom_cache(fetched_at);
+            CREATE INDEX IF NOT EXISTS idx_bans_recheck          ON player_bans(recheck_at);
         """)
     log.info("Database schema initialized")
 
@@ -183,13 +200,21 @@ async def cleanup_expired() -> None:
             DELETE FROM player_matches pm
             WHERE NOT EXISTS (SELECT 1 FROM matches m WHERE m.match_id = pm.match_id)
         """)
+        # Clean up stale ban cache for CLEAN players only.
+        # Banned players are kept (they're still useful info) but will be
+        # re-fetched when recheck_at passes on the next scan.
+        r6 = await conn.execute(
+            "DELETE FROM player_bans WHERE is_banned = FALSE AND recheck_at < $1",
+            now,
+        )
     log.info(
-        "Cache cleanup: stats=%s matchrooms=%s matches=%s players=%s orphan_links=%s",
+        "Cache cleanup: stats=%s matchrooms=%s matches=%s players=%s orphan_links=%s bans=%s",
         r1,
         r2,
         r3,
         r4,
         r5,
+        r6,
     )
 
 
@@ -463,6 +488,131 @@ async def save_matchroom(match_id: str, data: dict) -> None:
         """,
         match_id,
         json.dumps(data),
+    )
+
+
+# ── player ban cache (adaptive TTL) ──────────────────────────────────────────
+
+
+def _compute_ban_recheck_at(is_banned: bool, bans: list[dict]) -> int:
+    """Compute when to re-check this player's ban status.
+
+    - Clean player → now + 7 days
+    - Has ban with end date → ban_end + 6h buffer
+    - Permanent ban (no end date / far future) → now + 90 days
+    """
+    now = int(time.time())
+
+    if not is_banned:
+        return now + BAN_CLEAN_TTL_SECONDS
+
+    # Find the latest ban end date
+    latest_end = 0
+    for b in bans:
+        end_str = b.get("ends_at", "")
+        if not end_str:
+            # No end date → permanent ban
+            return now + BAN_PERMANENT_TTL_SECONDS
+        try:
+            from datetime import datetime
+
+            dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+            end_ts = int(dt.timestamp())
+            latest_end = max(latest_end, end_ts)
+        except (ValueError, TypeError):
+            # Can't parse → treat as permanent
+            return now + BAN_PERMANENT_TTL_SECONDS
+
+    if latest_end == 0:
+        # Has bans but no parseable end dates
+        return now + BAN_PERMANENT_TTL_SECONDS
+
+    # If ban end is very far out (>2 years), treat as permanent
+    if latest_end - now > 2 * 365 * 24 * 3600:
+        return now + BAN_PERMANENT_TTL_SECONDS
+
+    # Re-check shortly after ban is supposed to lift
+    return latest_end + BAN_EXPIRY_BUFFER_SECONDS
+
+
+async def get_cached_ban_status(player_ids: list[str]) -> dict[str, dict | None]:
+    """Return cached ban info for player IDs.
+
+    Returns None for players whose cache has expired (recheck_at in the past).
+    """
+    if not player_ids:
+        return {}
+    now = int(time.time())
+    pool = await _get_pool()
+    rows = await pool.fetch(
+        """SELECT player_id, is_banned, bans_json, checked_at, recheck_at
+           FROM player_bans
+           WHERE player_id = ANY($1)""",
+        player_ids,
+    )
+    result: dict[str, dict | None] = {pid: None for pid in player_ids}
+    for r in rows:
+        # Cache is stale if we've passed the recheck time
+        if now >= (r["recheck_at"] or 0):
+            result[r["player_id"]] = None
+            continue
+        bans_val = r["bans_json"]
+        if isinstance(bans_val, str):
+            bans_val = json.loads(bans_val)
+        elif bans_val is None:
+            bans_val = []
+        result[r["player_id"]] = {
+            "is_banned": r["is_banned"],
+            "bans": bans_val,
+            "checked_at": r["checked_at"],
+        }
+    return result
+
+
+async def save_ban_status(player_id: str, is_banned: bool, bans: list[dict]) -> None:
+    recheck_at = _compute_ban_recheck_at(is_banned, bans)
+    pool = await _get_pool()
+    await pool.execute(
+        """
+        INSERT INTO player_bans (player_id, is_banned, bans_json, checked_at, recheck_at)
+        VALUES ($1, $2, $3::jsonb, EXTRACT(EPOCH FROM NOW())::int, $4)
+        ON CONFLICT (player_id) DO UPDATE SET
+            is_banned  = EXCLUDED.is_banned,
+            bans_json  = EXCLUDED.bans_json,
+            checked_at = EXCLUDED.checked_at,
+            recheck_at = EXCLUDED.recheck_at
+        """,
+        player_id,
+        is_banned,
+        json.dumps(bans),
+        recheck_at,
+    )
+
+
+async def save_ban_statuses_bulk(results: list[tuple[str, bool, list[dict]]]) -> None:
+    """Bulk upsert ban results — single roundtrip."""
+    if not results:
+        return
+    ids = [r[0] for r in results]
+    banned_flags = [r[1] for r in results]
+    bans_jsons = [json.dumps(r[2]) for r in results]
+    recheck_ats = [_compute_ban_recheck_at(r[1], r[2]) for r in results]
+    pool = await _get_pool()
+    await pool.execute(
+        """
+        INSERT INTO player_bans (player_id, is_banned, bans_json, checked_at, recheck_at)
+        SELECT unnest($1::text[]), unnest($2::boolean[]), unnest($3::jsonb[]),
+               EXTRACT(EPOCH FROM NOW())::int, unnest($4::int[])
+        ON CONFLICT (player_id) DO UPDATE SET
+            is_banned  = EXCLUDED.is_banned,
+            bans_json  = EXCLUDED.bans_json,
+            checked_at = EXCLUDED.checked_at,
+            recheck_at = EXCLUDED.recheck_at
+        """,
+        ids,
+        banned_flags,
+        bans_jsons,
+        recheck_ats,
     )
 
 
