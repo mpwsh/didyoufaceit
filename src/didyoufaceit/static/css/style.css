@@ -1,0 +1,93 @@
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 85, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 85, 0, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(420%);
+  }
+}
+.progress-indeterminate {
+  animation: indeterminate 1.4s ease-in-out infinite;
+}
+@keyframes fadeSlide {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.card-enter {
+  animation: fadeSlide 0.22s ease both;
+}
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+.blink {
+  animation: blink 1.4s ease-in-out infinite;
+}
+/* Hover lift for secondary cards */
+.search-card {
+  transition:
+    border-color 0.2s ease,
+    transform 0.15s ease;
+}
+.search-card:hover {
+  transform: translateY(-1px);
+}
+/* Subtle label line accent */
+.card-label {
+  position: relative;
+}
+.card-label::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  height: 1px;
+  width: 24px;
+  background: currentColor;
+  opacity: 0.4;
+}
+/* Profile link icons — use CSS filter to recolor black SVGs */
+.profile-icon {
+  filter: brightness(0) invert(0.4); /* muted gray */
+  transition: filter 0.2s ease;
+}
+.profile-btn--faceit:hover {
+  border-color: #ff5500 !important;
+}
+.profile-btn--faceit:hover .profile-icon {
+  filter: brightness(0) invert(0.55) sepia(1) saturate(20) hue-rotate(3deg); /* brand orange */
+}
+.profile-btn--steam:hover {
+  border-color: #66c0f4 !important;
+}
+.profile-btn--steam:hover .profile-icon {
+  filter: brightness(0) invert(0.75) sepia(1) saturate(3) hue-rotate(175deg); /* steam blue */
+}
+.profile-btn--rip:hover {
+  border-color: #ef4444 !important;
+}
+.profile-btn--rip:hover .profile-icon {
+  filter: brightness(0) invert(0.55) sepia(1) saturate(20) hue-rotate(340deg); /* red */
+}

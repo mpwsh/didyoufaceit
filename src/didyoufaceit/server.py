@@ -85,6 +85,10 @@ def _sse_response(request: Request, stream_coro, label: str = "stream"):
     """
 
     async def generate():
+        # Disable EventSource auto-reconnect — we close intentionally after "done".
+        # Without this, the browser reconnects before JS processes the done event,
+        # replaying the entire stream and causing duplicate data.
+        yield "retry: 86400000\n\n"
         try:
             async for event in stream_coro:
                 # Check if client is still connected before sending
@@ -186,6 +190,7 @@ async def ban_scan(
                 yield event
 
     async def _generate_with_cancel():
+        yield "retry: 86400000\n\n"
         try:
             async for event in _stream():
                 if await request.is_disconnected():

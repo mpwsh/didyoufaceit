@@ -4,140 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>didyouFACEIT — Matchroom</title>
-    <link rel="icon" type="image/svg+xml" href="/static/crosshair.svg" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
     <script src="https://cdn.tailwindcss.com"></script>
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js"
     ></script>
-    <script src="/static/shared.js"></script>
-    <script src="/static/matchroom.js"></script>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap"
-      rel="stylesheet"
-    />
-    <script>
-      tailwind.config = {
-        darkMode: "class",
-        theme: {
-          extend: {
-            colors: {
-              brand: { DEFAULT: "#ff5500", dim: "#cc4400" },
-              surface: { DEFAULT: "#141414", alt: "#1a1a1a" },
-              border: { DEFAULT: "#2a2a2a", strong: "#3a3a3a" },
-              win: "#22c55e",
-              lose: "#ef4444",
-              muted: "#666666",
-              blue: "#60a5fa",
-              gold: "#f59e0b",
-            },
-            fontFamily: {
-              display: ['"Bebas Neue"', "sans-serif"],
-              mono: ['"DM Mono"', "monospace"],
-              sans: ['"DM Sans"', "sans-serif"],
-            },
-          },
-        },
-      };
-    </script>
-    <style>
-      body::before {
-        content: "";
-        position: fixed;
-        inset: 0;
-        background-image:
-          linear-gradient(rgba(255, 85, 0, 0.03) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255, 85, 0, 0.03) 1px, transparent 1px);
-        background-size: 40px 40px;
-        pointer-events: none;
-        z-index: 0;
-      }
-      @keyframes indeterminate {
-        0% {
-          transform: translateX(-120%);
-        }
-        100% {
-          transform: translateX(420%);
-        }
-      }
-      .progress-indeterminate {
-        animation: indeterminate 1.4s ease-in-out infinite;
-      }
-      @keyframes fadeSlide {
-        from {
-          opacity: 0;
-          transform: translateY(5px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-      .card-enter {
-        animation: fadeSlide 0.22s ease both;
-      }
-      @keyframes blink {
-        0%,
-        100% {
-          opacity: 0.25;
-        }
-        50% {
-          opacity: 0.8;
-        }
-      }
-      .blink {
-        animation: blink 1.4s ease-in-out infinite;
-      }
-      /* Hover lift for secondary cards */
-      .search-card {
-        transition:
-          border-color 0.2s ease,
-          transform 0.15s ease;
-      }
-      .search-card:hover {
-        transform: translateY(-1px);
-      }
-      /* Subtle label line accent */
-      .card-label {
-        position: relative;
-      }
-      .card-label::after {
-        content: "";
-        position: absolute;
-        bottom: -4px;
-        left: 0;
-        height: 1px;
-        width: 24px;
-        background: currentColor;
-        opacity: 0.4;
-      }
-      /* Profile link icons — use CSS filter to recolor black SVGs */
-      .profile-icon {
-        filter: brightness(0) invert(0.4); /* muted gray */
-        transition: filter 0.2s ease;
-      }
-      .profile-btn--faceit:hover {
-        border-color: #ff5500 !important;
-      }
-      .profile-btn--faceit:hover .profile-icon {
-        filter: brightness(0) invert(0.55) sepia(1) saturate(20)
-          hue-rotate(3deg); /* brand orange */
-      }
-      .profile-btn--steam:hover {
-        border-color: #66c0f4 !important;
-      }
-      .profile-btn--steam:hover .profile-icon {
-        filter: brightness(0) invert(0.75) sepia(1) saturate(3)
-          hue-rotate(175deg); /* steam blue */
-      }
-      .profile-btn--rip:hover {
-        border-color: #ef4444 !important;
-      }
-      .profile-btn--rip:hover .profile-icon {
-        filter: brightness(0) invert(0.55) sepia(1) saturate(20)
-          hue-rotate(340deg); /* red */
-      }
-    </style>
+    <link rel="icon" type="image/svg+xml" href="/static/icons/crosshair.svg" />
+    <link rel="stylesheet" href="/static/css/style.css" />
+    <script src="/static/js/shared.js"></script>
+    <script src="/static/js/matchroom.js"></script>
+    <script src="/static/css/tailwinds.js"></script>
   </head>
   <body
     class="bg-[#0d0d0d] text-[#e8e8e8] font-sans min-h-screen overflow-x-hidden"
@@ -145,19 +25,38 @@
     x-init="init()"
   >
     <div class="relative z-10 max-w-4xl mx-auto px-6">
-
       <!-- ── Header ── -->
-      <div class="flex items-center justify-between py-4 border-b border-border mb-8">
-        <a href="/" class="font-display text-2xl tracking-widest leading-none cursor-pointer hover:opacity-80 transition-opacity">
-          DIDYOU<svg class="inline-block size-[0.6em] mx-[0.1em] align-middle" viewBox="0 0 64 64" fill="#ff5500"><rect x="28" y="8" width="8" height="18" rx="1"/><rect x="28" y="38" width="8" height="18" rx="1"/><rect x="8" y="28" width="18" height="8" rx="1"/><rect x="38" y="28" width="18" height="8" rx="1"/></svg><span class="text-brand">FACEIT</span>
+      <div
+        class="flex items-center justify-between py-4 border-b border-border mb-8"
+      >
+        <a
+          href="/"
+          class="font-display text-2xl tracking-widest leading-none cursor-pointer hover:opacity-80 transition-opacity"
+        >
+          DIDYOU<svg
+            class="inline-block size-[0.6em] mx-[0.1em] align-middle"
+            viewBox="0 0 64 64"
+            fill="#ff5500"
+          >
+            <rect x="28" y="8" width="8" height="18" rx="1" />
+            <rect x="28" y="38" width="8" height="18" rx="1" />
+            <rect x="8" y="28" width="18" height="8" rx="1" />
+            <rect x="38" y="28" width="18" height="8" rx="1" /></svg
+          ><span class="text-brand">FACEIT</span>
         </a>
         <div class="flex gap-2">
           <button
             x-show="mrSearching"
             @click="cancelSearch()"
             class="font-mono text-[11px] tracking-[2px] uppercase text-muted border border-border px-4 py-2 transition-colors hover:border-lose hover:text-lose"
-          >STOP</button>
-          <a href="/" class="font-mono text-[11px] tracking-[2px] uppercase text-muted border border-border px-4 py-2 transition-colors hover:border-brand hover:text-[#e8e8e8]">NEW SEARCH</a>
+          >
+            STOP
+          </button>
+          <a
+            href="/"
+            class="font-mono text-[11px] tracking-[2px] uppercase text-muted border border-border px-4 py-2 transition-colors hover:border-brand hover:text-[#e8e8e8]"
+            >NEW SEARCH</a
+          >
         </div>
       </div>
       <!-- ── ERROR ── -->
@@ -402,11 +301,14 @@
                       </div>
                       <div class="grid grid-cols-2 divide-x divide-border/50">
                         <template
-                          x-for="contribs in [row.f1contribs, row.f2contribs]"
-                          :key="contribs === row.f1contribs ? 'f1' : 'f2'"
+                          x-for="(contribs, cIdx) in [row.f1contribs, row.f2contribs]"
+                          :key="'team-' + cIdx"
                         >
                           <div class="px-3 py-2">
-                            <template x-for="c in contribs" :key="c.nickname">
+                            <template
+                              x-for="(c, pIdx) in contribs"
+                              :key="cIdx + '-' + pIdx"
+                            >
                               <div
                                 class="grid grid-cols-[16px_minmax(40px,72px)_1fr_28px_28px_32px_42px] gap-1 items-center py-[2px]"
                                 :class="c.matches < 20 ? 'opacity-40' : ''"
@@ -500,3 +402,4 @@
       </footer>
     </div>
   </body>
+</html>
