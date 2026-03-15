@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>didyouFACEIT — Matchroom</title>
+    <link rel="icon" type="image/svg+xml" href="/static/crosshair.svg" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js"
+    ></script>
+    <script src="/static/shared.js"></script>
+    <script src="/static/matchroom.js"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              brand: { DEFAULT: "#ff5500", dim: "#cc4400" },
+              surface: { DEFAULT: "#141414", alt: "#1a1a1a" },
+              border: { DEFAULT: "#2a2a2a", strong: "#3a3a3a" },
+              win: "#22c55e",
+              lose: "#ef4444",
+              muted: "#666666",
+              blue: "#60a5fa",
+              gold: "#f59e0b",
+            },
+            fontFamily: {
+              display: ['"Bebas Neue"', "sans-serif"],
+              mono: ['"DM Mono"', "monospace"],
+              sans: ['"DM Sans"', "sans-serif"],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 85, 0, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 85, 0, 0.03) 1px, transparent 1px);
+        background-size: 40px 40px;
+        pointer-events: none;
+        z-index: 0;
+      }
+      @keyframes indeterminate {
+        0% {
+          transform: translateX(-120%);
+        }
+        100% {
+          transform: translateX(420%);
+        }
+      }
+      .progress-indeterminate {
+        animation: indeterminate 1.4s ease-in-out infinite;
+      }
+      @keyframes fadeSlide {
+        from {
+          opacity: 0;
+          transform: translateY(5px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .card-enter {
+        animation: fadeSlide 0.22s ease both;
+      }
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 0.25;
+        }
+        50% {
+          opacity: 0.8;
+        }
+      }
+      .blink {
+        animation: blink 1.4s ease-in-out infinite;
+      }
+      /* Hover lift for secondary cards */
+      .search-card {
+        transition:
+          border-color 0.2s ease,
+          transform 0.15s ease;
+      }
+      .search-card:hover {
+        transform: translateY(-1px);
+      }
+      /* Subtle label line accent */
+      .card-label {
+        position: relative;
+      }
+      .card-label::after {
+        content: "";
+        position: absolute;
+        bottom: -4px;
+        left: 0;
+        height: 1px;
+        width: 24px;
+        background: currentColor;
+        opacity: 0.4;
+      }
+      /* Profile link icons — use CSS filter to recolor black SVGs */
+      .profile-icon {
+        filter: brightness(0) invert(0.4); /* muted gray */
+        transition: filter 0.2s ease;
+      }
+      .profile-btn--faceit:hover {
+        border-color: #ff5500 !important;
+      }
+      .profile-btn--faceit:hover .profile-icon {
+        filter: brightness(0) invert(0.55) sepia(1) saturate(20)
+          hue-rotate(3deg); /* brand orange */
+      }
+      .profile-btn--steam:hover {
+        border-color: #66c0f4 !important;
+      }
+      .profile-btn--steam:hover .profile-icon {
+        filter: brightness(0) invert(0.75) sepia(1) saturate(3)
+          hue-rotate(175deg); /* steam blue */
+      }
+      .profile-btn--rip:hover {
+        border-color: #ef4444 !important;
+      }
+      .profile-btn--rip:hover .profile-icon {
+        filter: brightness(0) invert(0.55) sepia(1) saturate(20)
+          hue-rotate(340deg); /* red */
+      }
+    </style>
+  </head>
+  <body
+    class="bg-[#0d0d0d] text-[#e8e8e8] font-sans min-h-screen overflow-x-hidden"
+    x-data="matchroomApp()"
+    x-init="init()"
+  >
+    <div class="relative z-10 max-w-4xl mx-auto px-6">
+
+      <!-- ── Header ── -->
+      <div class="flex items-center justify-between py-4 border-b border-border mb-8">
+        <a href="/" class="font-display text-2xl tracking-widest leading-none cursor-pointer hover:opacity-80 transition-opacity">
+          DIDYOU<svg class="inline-block size-[0.6em] mx-[0.1em] align-middle" viewBox="0 0 64 64" fill="#ff5500"><rect x="28" y="8" width="8" height="18" rx="1"/><rect x="28" y="38" width="8" height="18" rx="1"/><rect x="8" y="28" width="18" height="8" rx="1"/><rect x="38" y="28" width="18" height="8" rx="1"/></svg><span class="text-brand">FACEIT</span>
+        </a>
+        <div class="flex gap-2">
+          <button
+            x-show="mrSearching"
+            @click="cancelSearch()"
+            class="font-mono text-[11px] tracking-[2px] uppercase text-muted border border-border px-4 py-2 transition-colors hover:border-lose hover:text-lose"
+          >STOP</button>
+          <a href="/" class="font-mono text-[11px] tracking-[2px] uppercase text-muted border border-border px-4 py-2 transition-colors hover:border-brand hover:text-[#e8e8e8]">NEW SEARCH</a>
+        </div>
+      </div>
+      <!-- ── ERROR ── -->
+      <div
+        x-show="errorMsg"
+        x-transition
+        class="flex gap-3 items-start bg-[#1a0a0a] border border-[#4a1a1a] text-lose font-mono text-[13px] p-4 mb-6"
+        role="alert"
+      >
+        <svg
+          class="size-4 mt-[1px] flex-shrink-0"
+          fill="currentColor"
+          viewBox="0 0 20 20"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+            clip-rule="evenodd"
+          />
+        </svg>
+        <span x-text="errorMsg"></span>
+      </div>
+      <!-- ── MATCHROOM SECTION ── -->
+      <div x-show="mrDone || mrSearching || mrError" x-transition class="pb-8">
+        <div
+          x-show="mrSearching && !mrDone"
+          class="font-mono text-[11px] tracking-[1.5px] text-muted mb-6 blink"
+          x-text="mrStatus"
+        ></div>
+        <div
+          x-show="mrError"
+          class="flex gap-3 items-start bg-[#1a0a0a] border border-[#4a1a1a] text-lose font-mono text-[13px] p-4 mb-6"
+          role="alert"
+        >
+          <svg
+            class="size-4 mt-[1px] flex-shrink-0"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          <span x-text="mrError"></span>
+        </div>
+        <template x-if="mrDone && Object.keys(mrFactions).length">
+          <div>
+            <div class="flex items-center justify-between mb-8">
+              <div class="font-display text-2xl tracking-widest">MATCHROOM</div>
+              <div x-show="mrPickedMap" class="flex items-center gap-2">
+                <span
+                  class="font-mono text-[10px] tracking-[2px] uppercase text-muted"
+                  >Picked</span
+                >
+                <span
+                  class="font-display text-lg tracking-widest text-brand"
+                  x-text="mrMapName(mrPickedMap)"
+                ></span>
+              </div>
+            </div>
+            <!-- MAP ADVANTAGE -->
+            <template
+              x-if="mrMapRecommendation.length > 0 && mrFactionKeys.length >= 2"
+            >
+              <div class="mb-10">
+                <div class="flex items-center gap-4 mb-4">
+                  <div class="font-display text-[20px] tracking-[3px]">
+                    MAP ADVANTAGE
+                  </div>
+                  <div class="flex gap-1 ml-2">
+                    <button
+                      @click="mrPerspective = 0"
+                      :class="mrPerspective === 0 ? 'bg-brand text-white border-brand' : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
+                      class="font-mono text-[10px] tracking-[1px] uppercase border px-2.5 py-1 transition-colors"
+                    >
+                      TEAM A
+                    </button>
+                    <button
+                      @click="mrPerspective = 1"
+                      :class="mrPerspective === 1 ? 'bg-brand text-white border-brand' : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
+                      class="font-mono text-[10px] tracking-[1px] uppercase border px-2.5 py-1 transition-colors"
+                    >
+                      TEAM B
+                    </button>
+                  </div>
+                  <div class="flex-1 h-px bg-border"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                  <div
+                    class="flex items-center gap-2 font-mono text-[10px] tracking-wide"
+                  >
+                    <span class="text-brand font-medium">A</span>
+                    <span
+                      class="text-muted"
+                      x-text="mrFactions[mrFactionKeys[0]]?.name || mrFactionKeys[0]"
+                    ></span>
+                  </div>
+                  <div
+                    class="flex items-center gap-2 font-mono text-[10px] tracking-wide"
+                  >
+                    <span class="text-blue font-medium">B</span>
+                    <span
+                      class="text-muted"
+                      x-text="mrFactions[mrFactionKeys[1]]?.name || mrFactionKeys[1]"
+                    ></span>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 divide-x divide-border/30 mb-1">
+                  <div class="px-3">
+                    <div
+                      class="grid grid-cols-[16px_minmax(40px,72px)_1fr_28px_28px_32px_42px] gap-1 font-mono text-[7px] tracking-[1px] uppercase text-[#444]"
+                    >
+                      <span>LV</span><span>PLAYER</span><span></span
+                      ><span class="text-right">WR</span
+                      ><span class="text-right">K/D</span
+                      ><span class="text-right">HLTV</span
+                      ><span class="text-right">MATCHES</span>
+                    </div>
+                  </div>
+                  <div class="px-3">
+                    <div
+                      class="grid grid-cols-[16px_minmax(40px,72px)_1fr_28px_28px_32px_42px] gap-1 font-mono text-[7px] tracking-[1px] uppercase text-[#444]"
+                    >
+                      <span>LV</span><span>PLAYER</span><span></span
+                      ><span class="text-right">WR</span
+                      ><span class="text-right">K/D</span
+                      ><span class="text-right">HLTV</span
+                      ><span class="text-right">MATCHES</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex flex-col gap-2">
+                  <template
+                    x-for="(row, idx) in mrMapRecommendation"
+                    :key="row.id"
+                  >
+                    <div
+                      class="bg-surface border border-border overflow-hidden"
+                      :class="idx === 0 ? 'border-win/30' : idx === mrMapRecommendation.length - 1 ? 'border-lose/30' : ''"
+                    >
+                      <div
+                        class="flex items-center justify-between px-4 py-2 border-b border-border/50"
+                        :class="idx === 0 ? 'bg-[#0a1a0a]' : idx === mrMapRecommendation.length - 1 ? 'bg-[#1a0a0a]' : 'bg-surface-alt'"
+                      >
+                        <div class="flex items-center gap-2">
+                          <span
+                            class="font-display text-[17px] tracking-widest"
+                            x-text="mrMapName(row.id)"
+                          ></span>
+                          <template x-if="idx === 0"
+                            ><span
+                              class="font-mono text-[9px] tracking-[1px] uppercase text-win bg-[#0a2a0a] border border-[#1a4a1a] px-1.5 py-0.5 rounded-sm"
+                              >PICK</span
+                            ></template
+                          >
+                          <template
+                            x-if="idx === mrMapRecommendation.length - 1"
+                            ><span
+                              class="font-mono text-[9px] tracking-[1px] uppercase text-lose bg-[#2a0a0a] border border-[#4a1a1a] px-1.5 py-0.5 rounded-sm"
+                              >BAN</span
+                            ></template
+                          >
+                          <template x-if="row.lowData"
+                            ><span
+                              class="font-mono text-[9px] tracking-[1px] uppercase text-[#666] bg-[#1a1a1a] border border-[#333] px-1.5 py-0.5 rounded-sm"
+                              >LOW DATA</span
+                            ></template
+                          >
+                        </div>
+                        <div
+                          class="flex items-center gap-2.5 relative"
+                          x-data="{ showTip: false }"
+                        >
+                          <span
+                            class="font-mono text-[10px] text-muted"
+                            x-text="(row.f1wr !== null ? row.f1wr + '%' : '—') + ' vs ' + (row.f2wr !== null ? row.f2wr + '%' : '—')"
+                          ></span>
+                          <span class="font-mono text-[10px] text-[#333]"
+                            >·</span
+                          >
+                          <span
+                            class="font-mono text-[10px]"
+                            :class="row.f1avgRating > row.f2avgRating ? 'text-[#e8e8e8]' : row.f1avgRating < row.f2avgRating ? 'text-muted' : 'text-muted'"
+                            x-text="(row.f1avgRating ? row.f1avgRating.toFixed(2) : '—')"
+                          ></span>
+                          <span class="font-mono text-[9px] text-[#333]"
+                            >vs</span
+                          >
+                          <span
+                            class="font-mono text-[10px]"
+                            :class="row.f2avgRating > row.f1avgRating ? 'text-[#e8e8e8]' : row.f2avgRating < row.f1avgRating ? 'text-muted' : 'text-muted'"
+                            x-text="(row.f2avgRating ? row.f2avgRating.toFixed(2) : '—')"
+                          ></span>
+                          <span
+                            class="font-mono text-[13px] font-medium min-w-[36px] text-right cursor-help"
+                            :class="row.wrDelta > 0 ? 'text-win' : row.wrDelta < 0 ? 'text-lose' : 'text-muted'"
+                            x-text="(row.wrDelta > 0 ? '+' : '') + row.wrDelta + '%'"
+                            @mouseenter="showTip = true"
+                            @mouseleave="showTip = false"
+                          ></span>
+                          <span
+                            class="font-mono text-[11px] w-4 text-center"
+                            :class="row.wrDelta > 3 ? 'text-win' : row.wrDelta < -3 ? 'text-lose' : 'text-muted'"
+                            x-text="row.wrDelta > 3 ? '▲' : row.wrDelta < -3 ? '▼' : '—'"
+                          ></span>
+                          <!-- Tooltip -->
+                          <div
+                            x-show="showTip"
+                            x-transition.opacity
+                            class="absolute right-0 top-full mt-2 z-50 bg-[#1a1a1a] border border-border text-[#ccc] font-mono text-[10px] leading-relaxed px-4 py-3 w-[280px] shadow-lg pointer-events-none"
+                          >
+                            <div
+                              class="font-display text-[12px] text-[#e8e8e8] tracking-wide mb-1.5"
+                            >
+                              HOW MAP ADVANTAGE WORKS
+                            </div>
+                            <div class="space-y-1.5">
+                              <p>
+                                The <span class="text-win">%</span> shows the
+                                difference in average team win rate on this map
+                                for the selected team's perspective.
+                              </p>
+                              <p>
+                                Maps are sorted by a composite of HLTV 2.0
+                                ratings (per player, per map) weighted by match
+                                count confidence.
+                              </p>
+                              <p>
+                                The <span class="text-brand">HLTV</span> column
+                                shows each player's approx. HLTV 2.0 rating on
+                                this map.
+                              </p>
+                              <p class="text-[#666]">
+                                Players with &lt;20 matches are faded — their
+                                data is less reliable.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="grid grid-cols-2 divide-x divide-border/50">
+                        <template
+                          x-for="contribs in [row.f1contribs, row.f2contribs]"
+                          :key="contribs === row.f1contribs ? 'f1' : 'f2'"
+                        >
+                          <div class="px-3 py-2">
+                            <template x-for="c in contribs" :key="c.nickname">
+                              <div
+                                class="grid grid-cols-[16px_minmax(40px,72px)_1fr_28px_28px_32px_42px] gap-1 items-center py-[2px]"
+                                :class="c.matches < 20 ? 'opacity-40' : ''"
+                              >
+                                <span
+                                  class="font-mono text-[8px] text-center font-medium"
+                                  :style="`color:${mrLevelColor(c.level)}`"
+                                  x-text="c.level || '—'"
+                                ></span>
+                                <span
+                                  class="font-mono text-[9px] truncate"
+                                  x-text="c.nickname"
+                                ></span>
+                                <div
+                                  class="h-[3px] bg-border/50 rounded-full overflow-hidden"
+                                >
+                                  <div
+                                    class="h-full rounded-full"
+                                    :style="`width:${Math.min(c.wr,100)}%;background:${mrWrColor(c.wr)}`"
+                                  ></div>
+                                </div>
+                                <span
+                                  class="font-mono text-[9px] text-right"
+                                  :style="`color:${mrWrColor(c.wr)}`"
+                                  x-text="c.wr+'%'"
+                                ></span>
+                                <span
+                                  class="font-mono text-[8px] text-right"
+                                  :style="`color:${mrKdColor(c.kd)}`"
+                                  x-text="c.kd ? c.kd.toFixed(2) : '—'"
+                                ></span>
+                                <span
+                                  class="font-mono text-[8px] text-right"
+                                  :style="`color:${mrRatingColor(c.rating)}`"
+                                  x-text="c.rating ? c.rating.toFixed(2) : '—'"
+                                ></span>
+                                <span
+                                  class="font-mono text-[8px] text-muted text-right"
+                                  x-text="c.matches"
+                                ></span>
+                              </div>
+                            </template>
+                            <template x-if="contribs.length === 0"
+                              ><div
+                                class="font-mono text-[9px] text-muted py-1"
+                              >
+                                no data
+                              </div></template
+                            >
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+                <div
+                  class="font-mono text-[10px] text-muted mt-3 tracking-wide"
+                >
+                  Sorted by composite score for
+                  <span
+                    class="text-[#e8e8e8]"
+                    x-text="(mrFactions[mrFactionKeys[mrPerspective]]?.name || mrFactionKeys[mrPerspective]) + ' (Team ' + (mrPerspective === 0 ? 'A' : 'B') + ')'"
+                  ></span
+                  >. HLTV = approx. HLTV 2.0 rating per map. Faded = &lt;20
+                  matches.
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+      <footer
+        class="border-t border-border mt-20 py-8 text-center font-mono text-[11px] text-[#444] tracking-wide space-y-2"
+      >
+        <div>
+          DIDYOUFACEIT.COM &nbsp;·&nbsp; Powered by the
+          <a
+            href="https://docs.faceit.com/docs/data-api/data/"
+            target="_blank"
+            rel="noopener"
+            class="text-[#555] hover:text-brand transition-colors"
+            >FACEIT Data API v4</a
+          >
+          &nbsp;·&nbsp; CS2
+        </div>
+        <div class="text-[10px] text-[#333]">
+          Not affiliated with or endorsed by FACEIT or Valve. FACEIT is a
+          trademark of ESL FACEIT Group. Counter-Strike 2 is a trademark of
+          Valve Corporation.
+        </div>
+      </footer>
+    </div>
+  </body>

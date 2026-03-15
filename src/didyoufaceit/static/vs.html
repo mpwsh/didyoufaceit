@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>didyouFACEIT — VS</title>
+    <link rel="icon" type="image/svg+xml" href="/static/crosshair.svg" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js"
+    ></script>
+    <script src="/static/shared.js"></script>
+    <script src="/static/vs.js"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              brand: { DEFAULT: "#ff5500", dim: "#cc4400" },
+              surface: { DEFAULT: "#141414", alt: "#1a1a1a" },
+              border: { DEFAULT: "#2a2a2a", strong: "#3a3a3a" },
+              win: "#22c55e",
+              lose: "#ef4444",
+              muted: "#666666",
+              blue: "#60a5fa",
+              gold: "#f59e0b",
+            },
+            fontFamily: {
+              display: ['"Bebas Neue"', "sans-serif"],
+              mono: ['"DM Mono"', "monospace"],
+              sans: ['"DM Sans"', "sans-serif"],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 85, 0, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 85, 0, 0.03) 1px, transparent 1px);
+        background-size: 40px 40px;
+        pointer-events: none;
+        z-index: 0;
+      }
+      @keyframes indeterminate {
+        0% {
+          transform: translateX(-120%);
+        }
+        100% {
+          transform: translateX(420%);
+        }
+      }
+      .progress-indeterminate {
+        animation: indeterminate 1.4s ease-in-out infinite;
+      }
+      @keyframes fadeSlide {
+        from {
+          opacity: 0;
+          transform: translateY(5px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .card-enter {
+        animation: fadeSlide 0.22s ease both;
+      }
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 0.25;
+        }
+        50% {
+          opacity: 0.8;
+        }
+      }
+      .blink {
+        animation: blink 1.4s ease-in-out infinite;
+      }
+      /* Hover lift for secondary cards */
+      .search-card {
+        transition:
+          border-color 0.2s ease,
+          transform 0.15s ease;
+      }
+      .search-card:hover {
+        transform: translateY(-1px);
+      }
+      /* Subtle label line accent */
+      .card-label {
+        position: relative;
+      }
+      .card-label::after {
+        content: "";
+        position: absolute;
+        bottom: -4px;
+        left: 0;
+        height: 1px;
+        width: 24px;
+        background: currentColor;
+        opacity: 0.4;
+      }
+      /* Profile link icons — use CSS filter to recolor black SVGs */
+      .profile-icon {
+        filter: brightness(0) invert(0.4); /* muted gray */
+        transition: filter 0.2s ease;
+      }
+      .profile-btn--faceit:hover {
+        border-color: #ff5500 !important;
+      }
+      .profile-btn--faceit:hover .profile-icon {
+        filter: brightness(0) invert(0.55) sepia(1) saturate(20)
+          hue-rotate(3deg); /* brand orange */
+      }
+      .profile-btn--steam:hover {
+        border-color: #66c0f4 !important;
+      }
+      .profile-btn--steam:hover .profile-icon {
+        filter: brightness(0) invert(0.75) sepia(1) saturate(3)
+          hue-rotate(175deg); /* steam blue */
+      }
+      .profile-btn--rip:hover {
+        border-color: #ef4444 !important;
+      }
+      .profile-btn--rip:hover .profile-icon {
+        filter: brightness(0) invert(0.55) sepia(1) saturate(20)
+          hue-rotate(340deg); /* red */
+      }
+    </style>
+  </head>
+  <body
+    class="bg-[#0d0d0d] text-[#e8e8e8] font-sans min-h-screen overflow-x-hidden"
+    x-data="vsApp()"
+    x-init="init()"
+  >
+    <div class="relative z-10 max-w-4xl mx-auto px-6">
+
+      <!-- ── Header ── -->
+      <div class="flex items-center justify-between py-4 border-b border-border mb-8">
+        <a href="/" class="font-display text-2xl tracking-widest leading-none cursor-pointer hover:opacity-80 transition-opacity">
+          DIDYOU<svg class="inline-block size-[0.6em] mx-[0.1em] align-middle" viewBox="0 0 64 64" fill="#ff5500"><rect x="28" y="8" width="8" height="18" rx="1"/><rect x="28" y="38" width="8" height="18" rx="1"/><rect x="8" y="28" width="18" height="8" rx="1"/><rect x="38" y="28" width="18" height="8" rx="1"/></svg><span class="text-brand">FACEIT</span>
+        </a>
+        <div class="flex gap-2">
+          <button
+            x-show="searching"
+            @click="cancelSearch()"
+            class="font-mono text-[11px] tracking-[2px] uppercase text-muted border border-border px-4 py-2 transition-colors hover:border-lose hover:text-lose"
+          >STOP</button>
+          <a href="/" class="font-mono text-[11px] tracking-[2px] uppercase text-muted border border-border px-4 py-2 transition-colors hover:border-brand hover:text-[#e8e8e8]">NEW SEARCH</a>
+        </div>
+      </div>
+      <!-- ── PROGRESS (player search) ── -->
+      <div x-show="searching" x-transition class="mb-8">
+        <div class="flex justify-between items-end mb-2">
+          <span
+            class="font-mono text-[11px] tracking-[1.5px] uppercase text-muted"
+            x-text="statusMsg"
+            >Connecting…</span
+          >
+          <span
+            class="font-mono text-[11px] text-brand"
+            x-text="foundCount > 0 ? foundCount + ' found' : ''"
+          ></span>
+        </div>
+        <div
+          class="h-[3px] bg-border overflow-hidden"
+          role="progressbar"
+          :aria-valuenow="progressPct"
+        >
+          <div
+            class="h-full bg-brand transition-[width] duration-300"
+            :class="progressTotal === 0 ? 'progress-indeterminate w-[30%]' : ''"
+            :style="progressTotal > 0 ? `width: ${progressPct}%` : ''"
+          ></div>
+        </div>
+        <div class="flex gap-6 mt-2 font-mono text-[11px] text-muted">
+          <span
+            x-text="progressTotal > 0 ? progressChecked.toLocaleString() + ' / ' + progressTotal.toLocaleString() + ' checked' : 'scanning…'"
+          ></span>
+        </div>
+      </div>
+      <!-- ── ERROR ── -->
+      <div
+        x-show="errorMsg"
+        x-transition
+        class="flex gap-3 items-start bg-[#1a0a0a] border border-[#4a1a1a] text-lose font-mono text-[13px] p-4 mb-6"
+        role="alert"
+      >
+        <svg
+          class="size-4 mt-[1px] flex-shrink-0"
+          fill="currentColor"
+          viewBox="0 0 20 20"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+            clip-rule="evenodd"
+          />
+        </svg>
+        <span x-text="errorMsg"></span>
+      </div>
+           PLAYER VS PLAYER RESULTS (unchanged from original)
+           ══════════════════════════════════════════════════════════════════════ -->
+      <div x-show="showResults" x-transition>
+        <!-- SCOREBOARD -->
+        <div
+          class="grid grid-cols-[1fr_auto_1fr] border border-border overflow-hidden mb-3"
+        >
+          <div
+            class="text-center p-7 transition-colors"
+            :class="youWins > oppWins ? 'bg-[#0a1a0a]' : oppWins > youWins ? 'bg-[#160a0a]' : 'bg-surface'"
+          >
+            <div
+              class="font-display text-[clamp(18px,2.5vw,26px)] tracking-widest mb-1 break-all"
+              x-text="you"
+            ></div>
+            <div
+              class="font-display text-[clamp(44px,7vw,68px)] leading-none"
+              :class="youWins > oppWins ? 'text-win' : oppWins > youWins ? 'text-lose' : 'text-brand'"
+              x-text="youWins"
+            ></div>
+            <div
+              class="font-mono text-[10px] tracking-[2px] uppercase text-muted mt-1"
+              x-text="youWins === 1 ? 'win' : 'wins'"
+            ></div>
+          </div>
+          <div
+            class="flex flex-col items-center justify-center gap-1.5 px-4 py-5 bg-surface-alt border-x border-border min-w-[76px]"
+          >
+            <div class="font-display text-base text-muted tracking-widest">
+              VS
+            </div>
+            <div class="text-center">
+              <div
+                class="font-display text-xl text-[#e8e8e8] tracking-wide"
+                x-text="enemies.length"
+              ></div>
+              <div class="font-mono text-[10px] text-muted">matches</div>
+            </div>
+            <template x-if="draws > 0">
+              <div class="text-center">
+                <div
+                  class="font-display text-xl text-[#e8e8e8]"
+                  x-text="draws"
+                ></div>
+                <div class="font-mono text-[10px] text-muted">draws</div>
+              </div>
+            </template>
+          </div>
+          <div
+            class="text-center p-7 transition-colors"
+            :class="oppWins > youWins ? 'bg-[#0a1a0a]' : youWins > oppWins ? 'bg-[#160a0a]' : 'bg-surface'"
+          >
+            <div
+              class="font-display text-[clamp(18px,2.5vw,26px)] tracking-widest mb-1 break-all"
+              x-text="opp"
+            ></div>
+            <div
+              class="font-display text-[clamp(44px,7vw,68px)] leading-none"
+              :class="oppWins > youWins ? 'text-win' : youWins > oppWins ? 'text-lose' : 'text-brand'"
+              x-text="oppWins"
+            ></div>
+            <div
+              class="font-mono text-[10px] tracking-[2px] uppercase text-muted mt-1"
+              x-text="oppWins === 1 ? 'win' : 'wins'"
+            ></div>
+          </div>
+        </div>
+
+        <!-- TEAMMATE BAR -->
+        <div
+          class="bg-surface border border-border border-t-0 px-6 py-3.5 flex flex-wrap items-center gap-x-5 gap-y-2 mb-6"
+        >
+          <span
+            class="font-mono text-[10px] tracking-[2px] uppercase text-muted flex-shrink-0"
+            >as teammates</span
+          >
+          <template x-if="teammates.length > 0">
+            <span
+              class="font-mono text-[11px] text-blue bg-[#0a1a2a] border border-[#1a3a5a] px-2.5 py-0.5 rounded-sm"
+              x-text="filteredTeammates.length + ' matches'"
+            ></span>
+          </template>
+          <template x-if="teammates.length > 0">
+            <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <div class="flex gap-3 font-mono text-[12px]">
+                <span class="text-win" x-text="tmWins + 'W'"></span>
+                <span class="text-lose" x-text="tmLosses + 'L'"></span>
+                <template x-if="tmDraws > 0"
+                  ><span class="text-muted" x-text="tmDraws + 'D'"></span
+                ></template>
+              </div>
+              <div class="w-px self-stretch bg-border flex-shrink-0"></div>
+              <span
+                class="font-mono text-[11px]"
+                :class="tmWr >= 55 ? 'text-win' : tmWr <= 40 ? 'text-lose' : 'text-[#e8e8e8]'"
+                x-text="tmWr + '% wr'"
+              ></span>
+              <template x-if="bestMap">
+                <div class="flex items-center gap-1.5 font-mono text-[11px]">
+                  <div class="w-px self-stretch bg-border flex-shrink-0"></div>
+                  <span class="text-muted">best</span>
+                  <span
+                    class="font-display tracking-wide text-win text-[13px]"
+                    x-text="bestMap"
+                  ></span>
+                  <span
+                    class="text-muted"
+                    x-text="mapStatsLabel(bestMap)"
+                  ></span>
+                </div>
+              </template>
+              <template x-if="worstMap">
+                <div class="flex items-center gap-1.5 font-mono text-[11px]">
+                  <div class="w-px self-stretch bg-border flex-shrink-0"></div>
+                  <span class="text-muted">worst</span>
+                  <span
+                    class="font-display tracking-wide text-lose text-[13px]"
+                    x-text="worstMap"
+                  ></span>
+                  <span
+                    class="text-muted"
+                    x-text="mapStatsLabel(worstMap)"
+                  ></span>
+                </div>
+              </template>
+            </div>
+          </template>
+          <template x-if="teammates.length === 0 && !searching"
+            ><span class="font-mono text-[12px] text-muted"
+              >no matches found</span
+            ></template
+          >
+        </div>
+
+        <!-- ── BEST LINEUPS ── -->
+        <template x-if="bestLineups.length > 0">
+          <div class="mb-8" x-data="{ showAllLineups: false }">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="font-display text-[22px] tracking-[3px]">
+                BEST LINEUPS
+              </div>
+              <span
+                class="font-mono text-[11px] bg-[#1a1200] text-gold border border-[#3a2800] px-2.5 py-0.5 rounded-sm"
+                >ranked by consistency</span
+              >
+              <div class="flex-1 h-px bg-border"></div>
+            </div>
+            <div class="flex flex-col gap-2">
+              <template
+                x-for="(lu, i) in (showAllLineups ? bestLineups : bestLineups.slice(0, 3))"
+                :key="lu.roster.join('|')"
+              >
+                <div
+                  class="bg-surface border border-border px-5 py-3.5 grid grid-cols-[24px_1fr_auto] gap-4 items-center card-enter"
+                >
+                  <div
+                    class="font-display text-[18px] text-muted leading-none"
+                    x-text="i + 1"
+                  ></div>
+                  <div
+                    class="font-mono text-[11px] flex flex-wrap gap-x-2 gap-y-1 min-w-0"
+                  >
+                    <template x-for="nick in lu.roster" :key="nick">
+                      <span
+                        :class="nick === you ? 'text-brand' : nick === opp ? 'text-blue' : 'text-[#e8e8e8]'"
+                        x-text="nick"
+                      ></span>
+                    </template>
+                  </div>
+                  <div class="text-right flex-shrink-0 flex items-center gap-4">
+                    <div class="font-mono text-[11px] flex gap-2">
+                      <span class="text-win" x-text="lu.w + 'W'"></span>
+                      <span class="text-lose" x-text="lu.l + 'L'"></span>
+                      <template x-if="lu.d > 0"
+                        ><span class="text-muted" x-text="lu.d + 'D'"></span
+                      ></template>
+                    </div>
+                    <span
+                      class="font-mono text-[10px] text-muted"
+                      x-text="lu.total + ' games'"
+                    ></span>
+                    <div
+                      class="font-display text-[20px] leading-none w-14 text-right"
+                      :class="lu.wr >= 55 ? 'text-win' : lu.wr <= 40 ? 'text-lose' : 'text-[#e8e8e8]'"
+                      x-text="lu.wr + '%'"
+                    ></div>
+                  </div>
+                </div>
+              </template>
+              <template x-if="bestLineups.length > 3">
+                <button
+                  @click="showAllLineups = !showAllLineups"
+                  class="font-mono text-[11px] text-muted border border-border py-2 text-center hover:border-brand hover:text-[#e8e8e8] transition-colors"
+                  x-text="showAllLineups ? 'Show less' : 'Show all ' + bestLineups.length + ' lineups'"
+                ></button>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <!-- ── FILTERS ── -->
+        <template x-if="showResults">
+          <div class="mb-8 flex flex-col gap-3">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span
+                class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-10 flex-shrink-0"
+                >MAP</span
+              >
+              <template x-for="map in availableMaps" :key="map">
+                <button
+                  @click="filterMap = map"
+                  :class="filterMap === map ? 'bg-brand text-white border-brand' : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
+                  class="font-mono text-[10px] tracking-[1px] uppercase border px-2.5 py-1 transition-colors"
+                  x-text="map === 'all' ? 'ALL' : map.replace('de_', '')"
+                ></button>
+              </template>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span
+                class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-10 flex-shrink-0"
+                >YEAR</span
+              >
+              <template x-for="year in availableYears" :key="year">
+                <button
+                  @click="filterYear = String(year)"
+                  :class="filterYear === String(year) ? 'bg-brand text-white border-brand' : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
+                  class="font-mono text-[10px] tracking-[1px] uppercase border px-2.5 py-1 transition-colors"
+                  x-text="year === 'all' ? 'ALL' : year"
+                ></button>
+              </template>
+            </div>
+            <template x-if="availableModes.length > 2">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span
+                  class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-10 flex-shrink-0"
+                  >MODE</span
+                >
+                <template x-for="mode in availableModes" :key="mode">
+                  <button
+                    @click="filterMode = mode"
+                    :class="filterMode === mode ? 'bg-brand text-white border-brand' : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
+                    class="font-mono text-[10px] tracking-[1px] uppercase border px-2.5 py-1 transition-colors truncate max-w-[200px]"
+                    x-text="mode === 'all' ? 'ALL' : mode === 'matchmaking' ? '5V5' : mode"
+                  ></button>
+                </template>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <!-- ── ENEMIES ── -->
+        <template x-if="enemies.length > 0 || !searching">
+          <div>
+            <div class="flex items-center gap-4 mb-4 mt-6">
+              <div class="font-display text-[22px] tracking-[3px]">ENEMIES</div>
+              <span
+                class="font-mono text-[11px] bg-[#2a0a0a] text-lose border border-[#4a1a1a] px-2.5 py-0.5 rounded-sm"
+                x-text="filteredEnemies.length + ' matches'"
+              ></span>
+              <div class="flex-1 h-px bg-border"></div>
+            </div>
+            <div class="flex flex-col gap-2">
+              <template x-for="m in pagedEnemies" :key="m.match_id">
+                <a
+                  :href="m.faceit_url || '#'"
+                  target="_blank"
+                  rel="noopener"
+                  class="bg-surface border border-border px-5 py-3.5 grid grid-cols-[72px_1fr_auto] gap-4 items-center transition-colors hover:border-brand no-underline text-[#e8e8e8] card-enter block"
+                >
+                  <div class="font-mono text-[11px] text-muted leading-relaxed">
+                    <span x-text="matchDate(m)[0]"></span><br /><span
+                      x-text="matchDate(m)[1]"
+                    ></span>
+                  </div>
+                  <div class="flex flex-col gap-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span
+                        class="font-display text-lg tracking-widest"
+                        x-text="matchMap(m)"
+                      ></span>
+                      <template x-if="matchIsTournament(m)">
+                        <span
+                          class="font-mono text-[9px] tracking-[1px] uppercase text-gold bg-[#1a1200] border border-[#3a2800] px-1.5 py-0.5 rounded-sm truncate max-w-[200px]"
+                          x-text="'🏆 ' + matchTournamentLabel(m)"
+                        ></span>
+                      </template>
+                    </div>
+                    <div class="font-mono text-[11px] text-muted truncate">
+                      <template
+                        x-for="(p, pi) in matchRosterYours(m)"
+                        :key="p.name + pi"
+                      >
+                        <span
+                          ><span :class="p.cls" x-text="p.name"></span
+                          ><span x-show="pi < matchRosterYours(m).length - 1"
+                            >,
+                          </span></span
+                        >
+                      </template>
+                    </div>
+                  </div>
+                  <div class="text-right flex-shrink-0">
+                    <div
+                      class="font-display text-[22px] tracking-widest leading-none"
+                      :class="matchScore(m).cls"
+                      x-text="matchScore(m).label"
+                    ></div>
+                    <div
+                      class="font-mono text-[10px] tracking-[1px] uppercase mt-0.5"
+                      :class="matchScore(m).win === true ? 'text-win' : matchScore(m).win === false ? 'text-lose' : 'text-muted'"
+                      x-text="matchScore(m).win === true ? 'win' : matchScore(m).win === false ? 'loss' : 'draw'"
+                    ></div>
+                  </div>
+                </a>
+              </template>
+              <template x-if="filteredEnemies.length > enemiesShown">
+                <div
+                  x-init="let ob = new IntersectionObserver(([e]) => { if (e.isIntersecting) enemiesShown += 25 }, { rootMargin: '200px' }); ob.observe($el);"
+                  class="font-mono text-[11px] text-muted py-3 text-center blink"
+                >
+                  loading more…
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <!-- ── TEAMMATES ── -->
+        <template x-if="teammates.length > 0 || !searching">
+          <div class="mt-10">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="font-display text-[22px] tracking-[3px]">
+                TEAMMATES
+              </div>
+              <span
+                class="font-mono text-[11px] bg-[#0a1a2a] text-blue border border-[#1a3a5a] px-2.5 py-0.5 rounded-sm"
+                x-text="filteredTeammates.length + ' matches'"
+              ></span>
+              <div class="flex-1 h-px bg-border"></div>
+            </div>
+            <div class="flex flex-col gap-2">
+              <template x-for="m in pagedTeammates" :key="m.match_id">
+                <a
+                  :href="m.faceit_url || '#'"
+                  target="_blank"
+                  rel="noopener"
+                  class="bg-surface border border-border px-5 py-3.5 grid grid-cols-[72px_1fr_auto] gap-4 items-center transition-colors hover:border-brand no-underline text-[#e8e8e8] card-enter block"
+                >
+                  <div class="font-mono text-[11px] text-muted leading-relaxed">
+                    <span x-text="matchDate(m)[0]"></span><br /><span
+                      x-text="matchDate(m)[1]"
+                    ></span>
+                  </div>
+                  <div class="flex flex-col gap-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span
+                        class="font-display text-lg tracking-widest"
+                        x-text="matchMap(m)"
+                      ></span>
+                      <template x-if="matchIsTournament(m)">
+                        <span
+                          class="font-mono text-[9px] tracking-[1px] uppercase text-gold bg-[#1a1200] border border-[#3a2800] px-1.5 py-0.5 rounded-sm truncate max-w-[200px]"
+                          x-text="'🏆 ' + matchTournamentLabel(m)"
+                        ></span>
+                      </template>
+                    </div>
+                    <div class="font-mono text-[11px] text-muted truncate">
+                      <template
+                        x-for="(p, pi) in matchRosterYours(m)"
+                        :key="p.name + pi"
+                      >
+                        <span
+                          ><span :class="p.cls" x-text="p.name"></span
+                          ><span x-show="pi < matchRosterYours(m).length - 1"
+                            >,
+                          </span></span
+                        >
+                      </template>
+                    </div>
+                  </div>
+                  <div class="text-right flex-shrink-0">
+                    <div
+                      class="font-display text-[22px] tracking-widest leading-none"
+                      :class="matchScore(m).cls"
+                      x-text="matchScore(m).label"
+                    ></div>
+                    <div
+                      class="font-mono text-[10px] tracking-[1px] uppercase mt-0.5"
+                      :class="matchScore(m).win === true ? 'text-win' : matchScore(m).win === false ? 'text-lose' : 'text-muted'"
+                      x-text="matchScore(m).win === true ? 'win' : matchScore(m).win === false ? 'loss' : 'draw'"
+                    ></div>
+                  </div>
+                </a>
+              </template>
+              <template x-if="filteredTeammates.length > teammatesShown">
+                <div
+                  x-init="let ob = new IntersectionObserver(([e]) => { if (e.isIntersecting) teammatesShown += 25 }, { rootMargin: '200px' }); ob.observe($el);"
+                  class="font-mono text-[11px] text-muted py-3 text-center blink"
+                >
+                  loading more…
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+      <footer
+        class="border-t border-border mt-20 py-8 text-center font-mono text-[11px] text-[#444] tracking-wide space-y-2"
+      >
+        <div>
+          DIDYOUFACEIT.COM &nbsp;·&nbsp; Powered by the
+          <a
+            href="https://docs.faceit.com/docs/data-api/data/"
+            target="_blank"
+            rel="noopener"
+            class="text-[#555] hover:text-brand transition-colors"
+            >FACEIT Data API v4</a
+          >
+          &nbsp;·&nbsp; CS2
+        </div>
+        <div class="text-[10px] text-[#333]">
+          Not affiliated with or endorsed by FACEIT or Valve. FACEIT is a
+          trademark of ESL FACEIT Group. Counter-Strike 2 is a trademark of
+          Valve Corporation.
+        </div>
+      </footer>
+    </div>
+  </body>
