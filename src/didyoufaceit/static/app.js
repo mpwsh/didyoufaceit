@@ -78,17 +78,21 @@ function kdColor(kd) {
   return "#ef4444";
 }
 
+function ratingColor(r) {
+  if (r >= 1.15) return "#22c55e";
+  if (r >= 0.95) return "#f59e0b";
+  return "#ef4444";
+}
+
 // Composite player-map strength score
-// Combines confidence-adjusted WR (Wilson), K/D impact, and level reliability
-function playerMapStrength(wins, matches, kd, level) {
+// Uses HLTV 2.0 approximation as the primary signal, with confidence ramp
+function playerMapStrength(wins, matches, kd, level, rating) {
   if (matches === 0) return 0;
-  // Wilson lower bound — confidence-adjusted win rate (penalizes low samples)
-  const wr = wilsonScore(wins, matches);
-  // K/D factor: scales 0.7–1.15 (bounded so a 2.0 K/D doesn't dominate)
-  const kdFactor = 0.7 + 0.3 * Math.min(kd / 1.3, 1.5);
-  // Level factor: slight boost for proven players (0.85–1.0)
-  const lvlFactor = 0.85 + 0.15 * (Math.min(level, 10) / 10);
-  return wr * kdFactor * lvlFactor;
+  // Confidence ramp: full confidence at 80+ matches
+  const confidence = 0.3 + 0.7 * Math.min(matches / 80, 1);
+  // Use HLTV rating if available, fall back to K/D-based estimate
+  const r = rating > 0 ? rating : kd > 0 ? 0.5 + 0.4 * kd : 0.5;
+  return Math.round(r * confidence * 100);
 }
 
 function wilsonScore(wins, total) {
@@ -229,7 +233,7 @@ function app() {
       banned_found: 0,
       total_matches: 0,
     },
-    bannedPlayers: [], // array of {player_id, nickname, bans, matches_against, matches}
+    bannedPlayers: [], // array of {player_id, nickname, steam_id_64, avatar, bans, matches_against, matches}
     banScanHasMore: false,
     banScanNextBeforeTs: null,
     banScanTotalBanned: 0,
@@ -534,6 +538,9 @@ function app() {
     mrKdColor(kd) {
       return kdColor(kd);
     },
+    mrRatingColor(r) {
+      return ratingColor(r);
+    },
 
     mrPlayerContribs(faction, mapId) {
       const players = this.mrFactions[faction]?.players || [];
@@ -551,11 +558,13 @@ function app() {
             elo: p.elo || 0,
             level,
             kd: ms.kd || 0,
+            rating: ms.rating || 0,
             strength: playerMapStrength(
               ms.wins,
               ms.matches,
               ms.kd || 1.0,
               level,
+              ms.rating || 0,
             ),
           };
         })
@@ -627,23 +636,56 @@ function app() {
         const minCoverage = Math.min(f1d.withData, f2d.withData) / 5;
         const confidence = 0.2 + 0.8 * minCoverage;
         const adjustedDelta = Math.round(rawDelta * confidence);
+        // WR delta for display — penalized by match count confidence
+        // Average matches per player across both teams on this map
+        const f1contribs = this.mrPlayerContribs(f1, mapId);
+        const f2contribs = this.mrPlayerContribs(f2, mapId);
+        const f1avgMatches =
+          f1contribs.length > 0
+            ? f1contribs.reduce((s, c) => s + c.matches, 0) / f1contribs.length
+            : 0;
+        const f2avgMatches =
+          f2contribs.length > 0
+            ? f2contribs.reduce((s, c) => s + c.matches, 0) / f2contribs.length
+            : 0;
+        const avgMatches = Math.min(f1avgMatches, f2avgMatches);
+        // Confidence ramp: 0.15 at 0 matches, full at 100+ matches
+        const wrConfidence = 0.15 + 0.85 * Math.min(avgMatches / 100, 1);
+        const rawWrDelta = (f1wr || 0) - (f2wr || 0);
+        const adjustedWrDelta = Math.round(rawWrDelta * wrConfidence);
+        const wrDelta =
+          this.mrPerspective === 0 ? adjustedWrDelta : -adjustedWrDelta;
+        // Average HLTV rating per team on this map
+        const f1avgRating =
+          f1contribs.length > 0
+            ? f1contribs.reduce((s, c) => s + (c.rating || 0), 0) /
+              f1contribs.length
+            : 0;
+        const f2avgRating =
+          f2contribs.length > 0
+            ? f2contribs.reduce((s, c) => s + (c.rating || 0), 0) /
+              f2contribs.length
+            : 0;
         rows.push({
           id: mapId,
           f1wr,
           f2wr,
           f1score,
           f2score,
+          f1avgRating,
+          f2avgRating,
           rawDelta,
           lowData,
           confidence,
           delta: this.mrPerspective === 0 ? adjustedDelta : -adjustedDelta,
+          wrDelta,
           f1depth: f1d,
           f2depth: f2d,
-          f1contribs: this.mrPlayerContribs(f1, mapId),
-          f2contribs: this.mrPlayerContribs(f2, mapId),
+          f1contribs,
+          f2contribs,
         });
       }
-      rows.sort((a, b) => b.delta - a.delta);
+      rows.sort((a, b) => b.wrDelta - a.wrDelta);
       return rows;
     },
 
@@ -1178,11 +1220,11 @@ function app() {
                 {
                   player_id: ev.player_id,
                   nickname: ev.nickname,
+                  steam_id_64: ev.steam_id_64 || "",
+                  avatar: ev.avatar || "",
                   bans: ev.bans || [],
                   matches_against: newMatches.length,
                   matches: newMatches,
-                  steam_id_64: ev.steam_id_64 || "",
-                  avatar: ev.avatar || "",
                 },
               ];
             }

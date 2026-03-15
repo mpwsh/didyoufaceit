@@ -64,16 +64,50 @@ def _parse_map_stats(segments: list[dict]) -> dict[str, dict]:
             except (ValueError, TypeError):
                 return default
 
+        def _int(key, default=0):
+            try:
+                return int(stats.get(key, default) or default)
+            except (ValueError, TypeError):
+                return default
+
+        # Raw stats for HLTV 2.0 computation
+        kills = _int("Kills")
+        deaths = _int("Deaths")
+        assists = _int("Assists")
+        rounds = _int("Rounds")
+        adr = _float("ADR")
+        kd = _float("Average K/D Ratio")
+
+        # Compute HLTV 2.0 approximation
+        # Formula: 0.0073*KAST + 0.3591*KPR - 0.5329*DPR + 0.2372*Impact + 0.0032*ADR + 0.1587
+        # Impact ≈ 2.13*KPR + 0.42*APR - 0.41
+        # KAST not available — estimate from K/D (calibrated to FACEIT ranges: ~63-78%)
+        rating = 0.0
+        if rounds > 0:
+            kpr = kills / rounds
+            dpr = deaths / rounds
+            apr = assists / rounds
+            impact = 2.13 * kpr + 0.42 * apr - 0.41
+            kast_est = max(55, min(85, 52 + 17 * kd)) if kd > 0 else 55
+            rating = round(
+                0.0073 * kast_est + 0.3591 * kpr - 0.5329 * dpr + 0.2372 * impact + 0.0032 * adr + 0.1587,
+                2,
+            )
+
         result[map_id] = {
             "wins": wins,
             "matches": matches,
             "wr": round(wins / matches * 100),
-            "kd": _float("Average K/D Ratio"),
+            "kd": kd,
+            "rating": rating,
             "avg_kills": _float("Average Kills"),
             "avg_deaths": _float("Average Deaths"),
             "hs_pct": _float("Average Headshots %"),
-            "win_streak": int(stats.get("Current Win Streak", 0) or 0),
-            "longest_streak": int(stats.get("Longest Win Streak", 0) or 0),
+            "adr": adr,
+            "entry_rate": _float("Entry Rate"),
+            "entry_success": _float("Entry Success Rate"),
+            "win_streak": _int("Current Win Streak"),
+            "longest_streak": _int("Longest Win Streak"),
         }
     return result
 
