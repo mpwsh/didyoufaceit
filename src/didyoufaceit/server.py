@@ -85,6 +85,10 @@ def _sse_response(request: Request, stream_coro, label: str = "stream"):
     """
 
     async def generate():
+        # Disable EventSource auto-reconnect — we close intentionally after "done".
+        # Without this, the browser reconnects before JS processes the done event,
+        # replaying the entire stream and causing duplicate data.
+        yield "retry: 86400000\n\n"
         try:
             async for event in stream_coro:
                 # Check if client is still connected before sending
@@ -186,6 +190,7 @@ async def ban_scan(
                 yield event
 
     async def _generate_with_cancel():
+        yield "retry: 86400000\n\n"
         try:
             async for event in _stream():
                 if await request.is_disconnected():
@@ -214,13 +219,28 @@ async def ban_scan(
     )
 
 
+@app.get("/vs")
+async def vs_page():
+    return FileResponse(str(_static_dir / "vs.html"))
+
+
+@app.get("/matchroom")
+async def matchroom_page():
+    return FileResponse(str(_static_dir / "matchroom.html"))
+
+
+@app.get("/banscan")
+async def banscan_page():
+    return FileResponse(str(_static_dir / "banscan.html"))
+
+
 @app.get("/{faceit_path:path}")
 async def faceit_url_redirect(faceit_path: str):
     """Catch FACEIT URLs pasted directly into the browser bar."""
     if "room/" in faceit_path:
         match_id = faceit_path.split("room/")[-1].split("?")[0].split("/")[0].strip()
         if match_id:
-            return RedirectResponse(f"/?room={match_id}")
+            return RedirectResponse(f"/matchroom?id={match_id}")
     return JSONResponse({"error": "not found"}, status_code=404)
 
 

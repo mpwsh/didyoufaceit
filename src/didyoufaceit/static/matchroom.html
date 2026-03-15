@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>didyouFACEIT — Matchroom</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js"
+    ></script>
+    <link rel="icon" type="image/svg+xml" href="/static/icons/crosshair.svg" />
+    <link rel="stylesheet" href="/static/css/style.css" />
+    <script src="/static/js/shared.js"></script>
+    <script src="/static/js/matchroom.js"></script>
+    <script src="/static/css/tailwinds.js"></script>
+  </head>
+  <body
+    class="bg-[#0d0d0d] text-[#e8e8e8] font-sans min-h-screen overflow-x-hidden"
+    x-data="matchroomApp()"
+    x-init="init()"
+  >
+    <div class="relative z-10 max-w-4xl mx-auto px-6">
+      <!-- ── Header ── -->
+      <div
+        class="flex items-center justify-between py-4 border-b border-border mb-8"
+      >
+        <a
+          href="/"
+          class="font-display text-2xl tracking-widest leading-none cursor-pointer hover:opacity-80 transition-opacity"
+        >
+          DIDYOU<svg
+            class="inline-block size-[0.6em] mx-[0.1em] align-middle"
+            viewBox="0 0 64 64"
+            fill="#ff5500"
+          >
+            <rect x="28" y="8" width="8" height="18" rx="1" />
+            <rect x="28" y="38" width="8" height="18" rx="1" />
+            <rect x="8" y="28" width="18" height="8" rx="1" />
+            <rect x="38" y="28" width="18" height="8" rx="1" /></svg
+          ><span class="text-brand">FACEIT</span>
+        </a>
+        <div class="flex gap-2">
+          <button
+            x-show="mrSearching"
+            @click="cancelSearch()"
+            class="font-mono text-[11px] tracking-[2px] uppercase text-muted border border-border px-4 py-2 transition-colors hover:border-lose hover:text-lose"
+          >
+            STOP
+          </button>
+          <a
+            href="/"
+            class="font-mono text-[11px] tracking-[2px] uppercase text-muted border border-border px-4 py-2 transition-colors hover:border-brand hover:text-[#e8e8e8]"
+          >
+            NEW SEARCH</a
+          >
+        </div>
+      </div>
+
+      <!-- ── Status / Error ── -->
+      <div
+        x-show="mrSearching && !mrDone"
+        class="font-mono text-[11px] tracking-[1.5px] text-muted mb-6 blink"
+        x-text="mrStatus"
+      ></div>
+      <template x-if="mrError">
+        <div
+          class="flex gap-3 items-start bg-[#1a0a0a] border border-[#4a1a1a] text-lose font-mono text-[13px] p-4 mb-6"
+          role="alert"
+        >
+          <svg
+            class="size-4 mt-[1px] flex-shrink-0"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          <span x-text="mrError"></span>
+        </div>
+      </template>
+
+      <!-- ── MAP ADVANTAGE ── -->
+      <template x-if="mrDone && mrFactionKeys.length >= 2">
+        <div class="pb-8">
+          <!-- Title -->
+          <div class="flex items-center justify-between mb-6">
+            <div class="font-display text-[24px] tracking-[3px]">MATCHROOM</div>
+            <div x-show="mrPickedMap" class="flex items-center gap-2">
+              <span
+                class="font-mono text-[10px] tracking-[2px] uppercase text-muted"
+                >Picked</span
+              >
+              <span
+                class="font-display text-lg tracking-widest text-brand"
+                x-text="mrMapName(mrPickedMap)"
+              ></span>
+            </div>
+          </div>
+
+          <!-- Column labels -->
+          <div class="grid grid-cols-[1fr_auto_1fr] gap-0 mb-2 px-1">
+            <div class="flex items-center gap-2">
+              <span
+                class="font-display text-[14px] tracking-[2px] text-brand"
+                x-text="mrTeamName(0)"
+              ></span>
+              <span class="font-mono text-[9px] text-muted">edge</span>
+            </div>
+            <div class="font-mono text-[9px] text-muted px-4">
+              avg hltv per map
+            </div>
+            <div class="flex items-center justify-end gap-2">
+              <span class="font-mono text-[9px] text-muted">edge</span>
+              <span
+                class="font-display text-[14px] tracking-[2px] text-blue"
+                x-text="mrTeamName(1)"
+              ></span>
+            </div>
+          </div>
+
+          <!-- Unified map list -->
+          <div class="flex flex-col gap-1.5">
+            <template x-for="(row, idx) in mrMapRows" :key="row.id">
+              <div
+                class="bg-surface border border-border overflow-hidden"
+                :class="idx === 0 ? 'border-win/30' : idx === mrMapRows.length - 1 ? 'border-win/30' : ''"
+              >
+                <!-- Map row (click to expand) -->
+                <div
+                  class="grid grid-cols-[minmax(50px,80px)_1fr_auto_1fr_minmax(50px,80px)] gap-0 items-center cursor-pointer select-none transition-colors"
+                  :class="idx === 0 ? 'bg-[#0a1a0a]/50' : idx === mrMapRows.length - 1 ? 'bg-[#0a0a1a]/50' : 'hover:bg-surface-alt'"
+                  @click="toggleMap(row.id)"
+                >
+                  <!-- Team A delta (left edge) -->
+                  <div class="px-3 py-2.5 flex items-center gap-1.5">
+                    <template x-if="idx === 0">
+                      <span
+                        class="font-mono text-[8px] tracking-[1px] uppercase text-win bg-[#0a2a0a] border border-[#1a4a1a] px-1.5 py-0.5 rounded-sm"
+                        >PICK</span
+                      >
+                    </template>
+                    <template x-if="idx === mrMapRows.length - 1">
+                      <span
+                        class="font-mono text-[8px] tracking-[1px] uppercase text-lose bg-[#2a0a0a] border border-[#4a1a1a] px-1.5 py-0.5 rounded-sm"
+                        >BAN</span
+                      >
+                    </template>
+                    <span
+                      class="font-mono text-[12px] font-medium"
+                      :class="row.delta > 0 ? 'text-win' : row.delta < 0 ? 'text-lose' : 'text-muted'"
+                      x-text="(row.delta > 0 ? '+' : '') + row.delta"
+                    ></span>
+                  </div>
+
+                  <!-- Team A avg HLTV -->
+                  <div
+                    class="font-mono text-[10px] text-muted text-right pr-3"
+                    x-text="row.f1avgRating ? row.f1avgRating.toFixed(2) : '—'"
+                  ></div>
+
+                  <!-- Map name (center) -->
+                  <div
+                    class="flex items-center justify-center gap-2 px-3 py-2.5"
+                  >
+                    <span
+                      class="font-display text-[16px] tracking-widest"
+                      x-text="mrMapName(row.id)"
+                    ></span>
+                    <template x-if="row.lowData">
+                      <span
+                        class="font-mono text-[7px] tracking-[1px] uppercase text-[#666] bg-[#1a1a1a] border border-[#333] px-1 py-0.5 rounded-sm"
+                        >LOW</span
+                      >
+                    </template>
+                    <svg
+                      class="size-3 text-muted transition-transform"
+                      :class="isExpanded(row.id) ? 'rotate-180' : ''"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </div>
+
+                  <!-- Team B avg HLTV -->
+                  <div
+                    class="font-mono text-[10px] text-muted text-left pl-3"
+                    x-text="row.f2avgRating ? row.f2avgRating.toFixed(2) : '—'"
+                  ></div>
+
+                  <!-- Team B delta (right edge) -->
+                  <div
+                    class="px-3 py-2.5 flex items-center justify-end gap-1.5"
+                  >
+                    <span
+                      class="font-mono text-[12px] font-medium"
+                      :class="-row.delta > 0 ? 'text-win' : -row.delta < 0 ? 'text-lose' : 'text-muted'"
+                      x-text="(-row.delta > 0 ? '+' : '') + (-row.delta)"
+                    ></span>
+                    <template x-if="idx === mrMapRows.length - 1">
+                      <span
+                        class="font-mono text-[8px] tracking-[1px] uppercase text-win bg-[#0a2a0a] border border-[#1a4a1a] px-1.5 py-0.5 rounded-sm"
+                        >PICK</span
+                      >
+                    </template>
+                    <template x-if="idx === 0">
+                      <span
+                        class="font-mono text-[8px] tracking-[1px] uppercase text-lose bg-[#2a0a0a] border border-[#4a1a1a] px-1.5 py-0.5 rounded-sm"
+                        >BAN</span
+                      >
+                    </template>
+                  </div>
+                </div>
+
+                <!-- Expandable player breakdown -->
+                <div
+                  x-show="isExpanded(row.id)"
+                  x-transition.duration.150ms
+                  class="border-t border-border/50"
+                >
+                  <div class="grid grid-cols-2 divide-x divide-border/30">
+                    <!-- Team A players -->
+                    <div class="px-3 py-2">
+                      <div
+                        class="font-mono text-[7px] tracking-[1px] uppercase text-[#444] mb-1 grid grid-cols-[14px_1fr_28px_28px_32px_36px] gap-1"
+                      >
+                        <span>LV</span><span>PLAYER</span
+                        ><span class="text-right">WR</span
+                        ><span class="text-right">K/D</span
+                        ><span class="text-right">HLTV</span
+                        ><span class="text-right">MTCH</span>
+                      </div>
+                      <template
+                        x-for="(c, pIdx) in row.f1contribs"
+                        :key="'f1-' + pIdx"
+                      >
+                        <div
+                          class="grid grid-cols-[14px_1fr_28px_28px_32px_36px] gap-1 items-center py-[2px]"
+                          :class="c.matches < 20 ? 'opacity-40' : ''"
+                        >
+                          <span
+                            class="font-mono text-[9px] text-center font-medium"
+                            :style="`color:${mrLevelColor(c.level)}`"
+                            x-text="c.level || '—'"
+                          ></span>
+                          <span
+                            class="font-mono text-[9px] truncate"
+                            x-text="c.nickname"
+                          ></span>
+                          <span
+                            class="font-mono text-[9px] text-right"
+                            :style="`color:${mrWrColor(c.wr)}`"
+                            x-text="c.wr+'%'"
+                          ></span>
+                          <span
+                            class="font-mono text-[8px] text-right"
+                            :style="`color:${mrKdColor(c.kd)}`"
+                            x-text="c.kd ? c.kd.toFixed(2) : '—'"
+                          ></span>
+                          <span
+                            class="font-mono text-[8px] text-right"
+                            :style="`color:${mrRatingColor(c.rating)}`"
+                            x-text="c.rating ? c.rating.toFixed(2) : '—'"
+                          ></span>
+                          <span
+                            class="font-mono text-[8px] text-muted text-right"
+                            x-text="c.matches"
+                          ></span>
+                        </div>
+                      </template>
+                      <template x-if="row.f1contribs.length === 0">
+                        <div class="font-mono text-[9px] text-muted py-1">
+                          no data
+                        </div>
+                      </template>
+                    </div>
+                    <!-- Team B players -->
+                    <div class="px-3 py-2">
+                      <div
+                        class="font-mono text-[7px] tracking-[1px] uppercase text-[#444] mb-1 grid grid-cols-[14px_1fr_28px_28px_32px_36px] gap-1"
+                      >
+                        <span>LV</span><span>PLAYER</span
+                        ><span class="text-right">WR</span
+                        ><span class="text-right">K/D</span
+                        ><span class="text-right">HLTV</span
+                        ><span class="text-right">MTCH</span>
+                      </div>
+                      <template
+                        x-for="(c, pIdx) in row.f2contribs"
+                        :key="'f2-' + pIdx"
+                      >
+                        <div
+                          class="grid grid-cols-[14px_1fr_28px_28px_32px_36px] gap-1 items-center py-[2px]"
+                          :class="c.matches < 20 ? 'opacity-40' : ''"
+                        >
+                          <span
+                            class="font-mono text-[9px] text-center font-medium"
+                            :style="`color:${mrLevelColor(c.level)}`"
+                            x-text="c.level || '—'"
+                          ></span>
+                          <span
+                            class="font-mono text-[9px] truncate"
+                            x-text="c.nickname"
+                          ></span>
+                          <span
+                            class="font-mono text-[9px] text-right"
+                            :style="`color:${mrWrColor(c.wr)}`"
+                            x-text="c.wr+'%'"
+                          ></span>
+                          <span
+                            class="font-mono text-[8px] text-right"
+                            :style="`color:${mrKdColor(c.kd)}`"
+                            x-text="c.kd ? c.kd.toFixed(2) : '—'"
+                          ></span>
+                          <span
+                            class="font-mono text-[8px] text-right"
+                            :style="`color:${mrRatingColor(c.rating)}`"
+                            x-text="c.rating ? c.rating.toFixed(2) : '—'"
+                          ></span>
+                          <span
+                            class="font-mono text-[8px] text-muted text-right"
+                            x-text="c.matches"
+                          ></span>
+                        </div>
+                      </template>
+                      <template x-if="row.f2contribs.length === 0">
+                        <div class="font-mono text-[9px] text-muted py-1">
+                          no data
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- Footer note -->
+          <div class="font-mono text-[10px] text-muted mt-4 tracking-wide">
+            Edge = composite score (80% HLTV rating, 20% win rate,
+            confidence-weighted by match count). Sorted by edge for
+            <span class="text-brand" x-text="mrTeamName(0)"></span> (top) →
+            <span class="text-blue" x-text="mrTeamName(1)"></span> (bottom).
+            Faded players = &lt;20 matches.
+          </div>
+        </div>
+      </template>
+
+      <footer
+        class="border-t border-border mt-20 py-8 text-center font-mono text-[11px] text-[#444] tracking-wide space-y-2"
+      >
+        <div>
+          DIDYOUFACEIT.COM &nbsp;·&nbsp; Powered by the
+          <a
+            href="https://docs.faceit.com/docs/data-api/data/"
+            target="_blank"
+            rel="noopener"
+            class="text-[#555] hover:text-brand transition-colors"
+            >FACEIT Data API v4</a
+          >
+          &nbsp;·&nbsp; CS2
+        </div>
+        <div class="text-[10px] text-[#333]">
+          Not affiliated with or endorsed by FACEIT or Valve. FACEIT is a
+          trademark of ESL FACEIT Group. Counter-Strike 2 is a trademark of
+          Valve Corporation.
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>
