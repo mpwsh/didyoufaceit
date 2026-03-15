@@ -10,14 +10,33 @@ function matchroomApp() {
     mrMapPool: [],
     mrPickedMap: null,
     mrDone: false,
-    mrPerspective: 0,
     errorMsg: "",
     _mrEs: null,
-
-    // dedup tracking: faction -> Set of player_ids already added
     _seenPlayers: {},
+    _expandedMaps: new Set(),
 
-    // ── Matchroom computed ──────────────────────────────────────────────────
+    toggleMap(mapId) {
+      if (this._expandedMaps.has(mapId)) {
+        this._expandedMaps.delete(mapId);
+      } else {
+        this._expandedMaps.add(mapId);
+      }
+      // Trigger reactivity (Alpine doesn't track Set mutations)
+      this._expandedMaps = new Set(this._expandedMaps);
+    },
+    isExpanded(mapId) {
+      return this._expandedMaps.has(mapId);
+    },
+
+    // Auto-expand the best and worst maps once data loads
+    _autoExpand() {
+      const rows = this.mrMapRows;
+      if (rows.length >= 2) {
+        this._expandedMaps = new Set([rows[0].id, rows[rows.length - 1].id]);
+      }
+    },
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
     mrMapName(id) {
       return mapDisplayName(id);
     },
@@ -65,11 +84,11 @@ function matchroomApp() {
 
     mrTeamScore(faction, mapId) {
       const contribs = this.mrPlayerContribs(faction, mapId);
-      const totalPlayers =
-        (this.mrFactions[faction]?.players || []).length || 5;
+      const total = (this.mrFactions[faction]?.players || []).length || 5;
       if (!contribs.length) return null;
-      const sum = contribs.reduce((s, c) => s + c.strength, 0);
-      return Math.round((sum / totalPlayers) * 100);
+      return Math.round(
+        (contribs.reduce((s, c) => s + c.strength, 0) / total) * 100,
+      );
     },
 
     mrTeamDepth(faction, mapId) {
@@ -96,98 +115,126 @@ function matchroomApp() {
 
     mrTeamWr(faction, mapId) {
       const players = this.mrFactions[faction]?.players || [];
-      let totalWins = 0,
-        totalMatches = 0;
+      let w = 0,
+        m = 0;
       for (const p of players) {
         const ms = p.map_stats?.[mapId];
         if (ms) {
-          totalWins += ms.wins;
-          totalMatches += ms.matches;
+          w += ms.wins;
+          m += ms.matches;
         }
       }
-      return totalMatches === 0
-        ? null
-        : Math.round((totalWins / totalMatches) * 100);
+      return m === 0 ? null : Math.round((w / m) * 100);
     },
 
-    get mrMapRecommendation() {
+    // ── Single unified map list (sorted best-for-A → best-for-B) ────────────
+
+    // Match-count-weighted average rating for a team's contribs on a map
+    _weightedAvgRating(contribs) {
+      if (!contribs.length) return 0;
+      let totalWeight = 0,
+        weightedSum = 0;
+      for (const c of contribs) {
+        if (c.rating > 0 && c.matches > 0) {
+          weightedSum += c.rating * c.matches;
+          totalWeight += c.matches;
+        }
+      }
+      return totalWeight > 0 ? weightedSum / totalWeight : 0;
+    },
+
+    // Match-count-weighted average WR for a team's contribs on a map
+    _weightedAvgWr(contribs) {
+      if (!contribs.length) return 0;
+      let totalWins = 0,
+        totalMatches = 0;
+      for (const c of contribs) {
+        totalWins += c.wins;
+        totalMatches += c.matches;
+      }
+      return totalMatches > 0 ? (totalWins / totalMatches) * 100 : 0;
+    },
+
+    get mrMapRows() {
       const fk = Object.keys(this.mrFactions);
       if (fk.length < 2) return [];
       const [f1, f2] = fk;
       const rows = [];
       for (const mapId of this.mrAllMaps) {
-        const f1wr = this.mrTeamWr(f1, mapId),
-          f2wr = this.mrTeamWr(f2, mapId);
         const f1score = this.mrTeamScore(f1, mapId),
           f2score = this.mrTeamScore(f2, mapId);
         if (f1score === null && f2score === null) continue;
-        const rawDelta = (f1score || 0) - (f2score || 0);
         const f1d = this.mrTeamDepth(f1, mapId),
           f2d = this.mrTeamDepth(f2, mapId);
         const lowData = f1d.withData < 3 || f2d.withData < 3;
-        const minCoverage = Math.min(f1d.withData, f2d.withData) / 5;
-        const confidence = 0.2 + 0.8 * minCoverage;
-        const adjustedDelta = Math.round(rawDelta * confidence);
-        const f1contribs = this.mrPlayerContribs(f1, mapId);
-        const f2contribs = this.mrPlayerContribs(f2, mapId);
-        const f1avgMatches =
-          f1contribs.length > 0
-            ? f1contribs.reduce((s, c) => s + c.matches, 0) / f1contribs.length
+        const f1c = this.mrPlayerContribs(f1, mapId),
+          f2c = this.mrPlayerContribs(f2, mapId);
+
+        // Match-weighted averages (players with more games count more)
+        const f1ar = this._weightedAvgRating(f1c),
+          f2ar = this._weightedAvgRating(f2c);
+        const f1wwr = this._weightedAvgWr(f1c),
+          f2wwr = this._weightedAvgWr(f2c);
+
+        // Confidence curves — separate for WR and HLTV
+        const f1am =
+          f1c.length > 0
+            ? f1c.reduce((s, c) => s + c.matches, 0) / f1c.length
             : 0;
-        const f2avgMatches =
-          f2contribs.length > 0
-            ? f2contribs.reduce((s, c) => s + c.matches, 0) / f2contribs.length
+        const f2am =
+          f2c.length > 0
+            ? f2c.reduce((s, c) => s + c.matches, 0) / f2c.length
             : 0;
-        const avgMatches = Math.min(f1avgMatches, f2avgMatches);
-        const wrConfidence = 0.15 + 0.85 * Math.min(avgMatches / 100, 1);
-        const rawWrDelta = (f1wr || 0) - (f2wr || 0);
-        const adjustedWrDelta = Math.round(rawWrDelta * wrConfidence);
-        const wrDelta =
-          this.mrPerspective === 0 ? adjustedWrDelta : -adjustedWrDelta;
-        const f1avgRating =
-          f1contribs.length > 0
-            ? f1contribs.reduce((s, c) => s + (c.rating || 0), 0) /
-              f1contribs.length
-            : 0;
-        const f2avgRating =
-          f2contribs.length > 0
-            ? f2contribs.reduce((s, c) => s + (c.rating || 0), 0) /
-              f2contribs.length
-            : 0;
+        const minAvgMatches = Math.min(f1am, f2am);
+
+        // WR confidence: ramps slowly (full at ~100 avg matches) — WR is noisy with small samples
+        const wrConf = 0.15 + 0.85 * Math.min(minAvgMatches / 100, 1);
+
+        // HLTV confidence: ramps fast (full at ~30 avg matches) — per-round rating is reliable earlier
+        const hltvConf = 0.4 + 0.6 * Math.min(minAvgMatches / 30, 1);
+
+        // WR delta
+        const wrDelta = (f1wwr - f2wwr) * wrConf;
+
+        // HLTV delta — scale to roughly same range as WR delta (~±10)
+        const hltvDelta = (f1ar - f2ar) * 50 * hltvConf;
+
+        // Blended score: 80% HLTV, 20% WR
+        const delta = Math.round(wrDelta * 0.2 + hltvDelta * 0.8);
+
+        // Display WR (simple team-level for the tooltip / reference)
+        const f1wr = this.mrTeamWr(f1, mapId),
+          f2wr = this.mrTeamWr(f2, mapId);
+
         rows.push({
           id: mapId,
           f1wr,
           f2wr,
-          f1score,
-          f2score,
-          f1avgRating,
-          f2avgRating,
-          rawDelta,
+          f1avgRating: f1ar,
+          f2avgRating: f2ar,
           lowData,
-          confidence,
-          delta: this.mrPerspective === 0 ? adjustedDelta : -adjustedDelta,
-          wrDelta,
-          f1depth: f1d,
-          f2depth: f2d,
-          f1contribs,
-          f2contribs,
+          delta,
+          f1contribs: f1c,
+          f2contribs: f2c,
         });
       }
-      rows.sort((a, b) => b.wrDelta - a.wrDelta);
+      rows.sort((a, b) => b.delta - a.delta);
       return rows;
     },
 
     get mrFactionKeys() {
       return Object.keys(this.mrFactions);
     },
+    mrTeamName(idx) {
+      const fk = this.mrFactionKeys;
+      return idx < fk.length ? this.mrFactions[fk[idx]]?.name || fk[idx] : "";
+    },
 
     // ── Init ────────────────────────────────────────────────────────────────
     init() {
       const p = new URLSearchParams(window.location.search);
       const id = p.get("id")?.trim();
-      if (id) {
-        this.$nextTick(() => this._startMatchroom(id));
-      }
+      if (id) this.$nextTick(() => this._startMatchroom(id));
       window.addEventListener("beforeunload", () => {
         if (this._mrEs) {
           this._mrEs.close();
@@ -214,6 +261,7 @@ function matchroomApp() {
       this.mrPickedMap = null;
       this.mrDone = false;
       this._seenPlayers = {};
+      this._expandedMaps = new Set();
 
       const es = new EventSource(
         `/api/matchroom?id=${encodeURIComponent(raw)}`,
@@ -232,12 +280,10 @@ function matchroomApp() {
             this.mrStatus = ev.msg;
             break;
           case "player": {
-            // Deduplicate: skip if we already added this player to this faction
             if (!this._seenPlayers[ev.faction])
               this._seenPlayers[ev.faction] = new Set();
             if (this._seenPlayers[ev.faction].has(ev.player_id)) break;
             this._seenPlayers[ev.faction].add(ev.player_id);
-
             const factions = { ...this.mrFactions };
             if (!factions[ev.faction])
               factions[ev.faction] = {
@@ -279,6 +325,7 @@ function matchroomApp() {
           case "done":
             this.mrSearching = false;
             this.mrDone = true;
+            this._autoExpand();
             es.close();
             this._mrEs = null;
             break;
@@ -291,8 +338,6 @@ function matchroomApp() {
         }
       };
       es.onerror = () => {
-        // After "done" or "error" we already called es.close() — ignore the
-        // onerror that fires when the server then drops the TCP connection.
         if (this.mrDone || this.mrError) return;
         if (es.readyState === EventSource.CLOSED) return;
         this.mrSearching = false;
