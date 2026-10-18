@@ -1,225 +1,216 @@
 // ── matchroom.js — Alpine app for matchroom analysis ─────────────────────────
 
+const FINAL_STATUSES = ["FINISHED", "CANCELLED", "ABORTED"];
+const POOL_POLL_MS = 15000;
+const POOL_POLL_MAX = 40; // ~10 minutes
+
+const MATCH_ID_RE =
+  /1-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
+
 function matchroomApp() {
   return {
-    mrMatchId: "",
     mrSearching: false,
     mrError: "",
     mrStatus: "Connecting…",
     mrFactions: {},
     mrMapPool: [],
+    mrMapNames: {},
     mrPickedMap: null,
+    mrPoolSource: "match", // "default" until FACEIT sends this room's own pool
+    mrMatchStatus: "",
+    mrMatchId: "",
+    mrResult: null, // {winner, score} once the match is over
     mrDone: false,
-    errorMsg: "",
+    mrSel: null, // map whose players show in the shared table
     _mrEs: null,
     _seenPlayers: {},
-    _expandedMaps: new Set(),
-
-    toggleMap(mapId) {
-      if (this._expandedMaps.has(mapId)) {
-        this._expandedMaps.delete(mapId);
-      } else {
-        this._expandedMaps.add(mapId);
-      }
-      // Trigger reactivity (Alpine doesn't track Set mutations)
-      this._expandedMaps = new Set(this._expandedMaps);
-    },
-    isExpanded(mapId) {
-      return this._expandedMaps.has(mapId);
-    },
-
-    // Auto-expand the best and worst maps once data loads
-    _autoExpand() {
-      const rows = this.mrMapRows;
-      if (rows.length >= 2) {
-        this._expandedMaps = new Set([rows[0].id, rows[rows.length - 1].id]);
-      }
-    },
+    _poolTimer: null,
+    _poolTries: 0,
 
     // ── Helpers ─────────────────────────────────────────────────────────────
     mrMapName(id) {
-      return mapDisplayName(id);
+      if (!id) return "";
+      return this.mrMapNames[id] || mapDisplayName(id);
     },
-    mrWrColor(wr) {
-      return wrColor(wr);
+    mrSelect(mapId) {
+      this.mrSel = mapId;
     },
-    mrLevelColor(lvl) {
-      return levelColor(lvl);
+    fmtDiff(d) {
+      if (d === null) return "no data";
+      if (Math.abs(d) < 0.005) return "±0.00";
+      return (d > 0 ? "+" : "−") + Math.abs(d).toFixed(2);
     },
-    mrKdColor(kd) {
-      return kdColor(kd);
-    },
-    mrRatingColor(r) {
-      return ratingColor(r);
-    },
-
-    mrPlayerContribs(faction, mapId) {
-      const players = this.mrFactions[faction]?.players || [];
-      if (!players.length) return [];
-      return players
-        .filter((p) => p.map_stats?.[mapId]?.matches > 0)
-        .map((p) => {
-          const ms = p.map_stats[mapId];
-          const level = p.skill_level || eloToLevel(p.elo);
-          return {
-            nickname: p.nickname,
-            wins: ms.wins,
-            matches: ms.matches,
-            wr: ms.wr,
-            elo: p.elo || 0,
-            level,
-            kd: ms.kd || 0,
-            rating: ms.rating || 0,
-            strength: playerMapStrength(
-              ms.wins,
-              ms.matches,
-              ms.kd || 1.0,
-              level,
-              ms.rating || 0,
-            ),
-          };
-        })
-        .sort((a, b) => b.strength - a.strength);
+    diffClass(d) {
+      if (d === null || Math.abs(d) < 0.005) return "text-muted bg-surface-alt";
+      return d > 0 ? "text-win bg-win/10" : "text-lose bg-lose/10";
     },
 
-    mrTeamScore(faction, mapId) {
-      const contribs = this.mrPlayerContribs(faction, mapId);
-      const total = (this.mrFactions[faction]?.players || []).length || 5;
-      if (!contribs.length) return null;
-      return Math.round(
-        (contribs.reduce((s, c) => s + c.strength, 0) / total) * 100,
-      );
-    },
-
-    mrTeamDepth(faction, mapId) {
-      const players = this.mrFactions[faction]?.players || [];
-      let experienced = 0,
-        withData = 0;
-      for (const p of players) {
-        const ms = p.map_stats?.[mapId];
-        if (ms && ms.matches > 0) {
-          withData++;
-          if (ms.matches >= 20) experienced++;
-        }
-      }
-      return { experienced, withData, total: players.length };
-    },
-
+    // Maps to show: the match's own pool (from FACEIT voting, or the server's
+    // fallback pool). Only when no pool arrived, every map any player has played.
     get mrAllMaps() {
+      if (this.mrMapPool.length) return [...this.mrMapPool];
       const maps = new Set();
       for (const f of Object.values(this.mrFactions))
         for (const p of f.players || [])
           for (const mapId of Object.keys(p.map_stats || {})) maps.add(mapId);
-      return Array.from(maps).sort();
+      return Array.from(maps);
     },
 
-    mrTeamWr(faction, mapId) {
+    // One team on one map.
+    // - rating: plain mean over the whole roster, so one veteran can't outweigh four
+    //   teammates. The server already pulls each player's map rating toward their current
+    //   form; a player with no games on the map counts at their overall rating.
+    // - winPct: mean of the win % of players who have played it; matches: their total.
+    _teamOnMap(faction, mapId) {
       const players = this.mrFactions[faction]?.players || [];
-      let w = 0,
-        m = 0;
-      for (const p of players) {
-        const ms = p.map_stats?.[mapId];
-        if (ms) {
-          w += ms.wins;
-          m += ms.matches;
-        }
-      }
-      return m === 0 ? null : Math.round((w / m) * 100);
+      const played = players.filter((p) => p.map_stats?.[mapId]?.matches > 0);
+      const ratings = players
+        .map((p) => p.map_stats?.[mapId]?.rating || p.overall_rating || 0)
+        .filter((r) => r > 0);
+      return {
+        rating: ratings.length ? ratings.reduce((s, r) => s + r, 0) / ratings.length : 0,
+        winPct: played.length
+          ? played.reduce((s, p) => s + p.map_stats[mapId].wr, 0) / played.length
+          : null,
+        matches: played.reduce((s, p) => s + p.map_stats[mapId].matches, 0),
+        withData: played.length,
+      };
     },
 
-    // ── Single unified map list (sorted best-for-A → best-for-B) ────────────
-
-    // Match-count-weighted average rating for a team's contribs on a map
-    _weightedAvgRating(contribs) {
-      if (!contribs.length) return 0;
-      let totalWeight = 0,
-        weightedSum = 0;
-      for (const c of contribs) {
-        if (c.rating > 0 && c.matches > 0) {
-          weightedSum += c.rating * c.matches;
-          totalWeight += c.matches;
-        }
-      }
-      return totalWeight > 0 ? weightedSum / totalWeight : 0;
-    },
-
-    // Match-count-weighted average WR for a team's contribs on a map
-    _weightedAvgWr(contribs) {
-      if (!contribs.length) return 0;
-      let totalWins = 0,
-        totalMatches = 0;
-      for (const c of contribs) {
-        totalWins += c.wins;
-        totalMatches += c.matches;
-      }
-      return totalMatches > 0 ? (totalWins / totalMatches) * 100 : 0;
-    },
-
-    get mrMapRows() {
-      const fk = Object.keys(this.mrFactions);
+    // Every map with both teams' numbers and the rating diff (team 0 minus team 1).
+    // A side where nobody has played the map has no diff: it would compare against a guess.
+    get mrMapStats() {
+      const fk = this.mrFactionKeys;
       if (fk.length < 2) return [];
-      const [f1, f2] = fk;
-      const rows = [];
-      for (const mapId of this.mrAllMaps) {
-        const f1score = this.mrTeamScore(f1, mapId),
-          f2score = this.mrTeamScore(f2, mapId);
-        if (f1score === null && f2score === null) continue;
-        const f1d = this.mrTeamDepth(f1, mapId),
-          f2d = this.mrTeamDepth(f2, mapId);
-        const lowData = f1d.withData < 3 || f2d.withData < 3;
-        const f1c = this.mrPlayerContribs(f1, mapId),
-          f2c = this.mrPlayerContribs(f2, mapId);
+      return this.mrAllMaps.map((id) => {
+        const t0 = this._teamOnMap(fk[0], id);
+        const t1 = this._teamOnMap(fk[1], id);
+        const noData = t0.withData === 0 || t1.withData === 0;
+        return { id, teams: [t0, t1], diff: noData ? null : t0.rating - t1.rating };
+      });
+    },
 
-        // Match-weighted averages (players with more games count more)
-        const f1ar = this._weightedAvgRating(f1c),
-          f2ar = this._weightedAvgRating(f2c);
-        const f1wwr = this._weightedAvgWr(f1c),
-          f2wwr = this._weightedAvgWr(f2c);
-
-        // Confidence curves — separate for WR and HLTV
-        const f1am =
-          f1c.length > 0
-            ? f1c.reduce((s, c) => s + c.matches, 0) / f1c.length
-            : 0;
-        const f2am =
-          f2c.length > 0
-            ? f2c.reduce((s, c) => s + c.matches, 0) / f2c.length
-            : 0;
-        const minAvgMatches = Math.min(f1am, f2am);
-
-        // WR confidence: ramps slowly (full at ~100 avg matches) — WR is noisy with small samples
-        const wrConf = 0.15 + 0.85 * Math.min(minAvgMatches / 100, 1);
-
-        // HLTV confidence: ramps fast (full at ~30 avg matches) — per-round rating is reliable earlier
-        const hltvConf = 0.4 + 0.6 * Math.min(minAvgMatches / 30, 1);
-
-        // WR delta
-        const wrDelta = (f1wwr - f2wwr) * wrConf;
-
-        // HLTV delta — scale to roughly same range as WR delta (~±10)
-        const hltvDelta = (f1ar - f2ar) * 50 * hltvConf;
-
-        // Blended score: 80% HLTV, 20% WR
-        const delta = Math.round(wrDelta * 0.2 + hltvDelta * 0.8);
-
-        // Display WR (simple team-level for the tooltip / reference)
-        const f1wr = this.mrTeamWr(f1, mapId),
-          f2wr = this.mrTeamWr(f2, mapId);
-
-        rows.push({
-          id: mapId,
-          f1wr,
-          f2wr,
-          f1avgRating: f1ar,
-          f2avgRating: f2ar,
-          lowData,
-          delta,
-          f1contribs: f1c,
-          f2contribs: f2c,
-        });
-      }
-      rows.sort((a, b) => b.delta - a.delta);
+    // One column per team: its maps from best to worst against this opponent, by diff.
+    mrColumn(idx) {
+      const sign = idx === 0 ? 1 : -1;
+      const rows = this.mrMapStats.map((m) => {
+        const t = m.teams[idx];
+        return {
+          id: m.id,
+          diff: m.diff === null ? null : sign * m.diff,
+          rating: t.withData ? t.rating.toFixed(2) : "—",
+          ratingColor: t.withData ? ratingColor(t.rating) : "",
+          winPct: t.winPct === null ? "—" : Math.round(t.winPct) + "%",
+          winColor: t.winPct === null ? "" : wrColor(t.winPct),
+          matches: t.matches.toLocaleString("en-US"),
+          lowData: t.withData < 3,
+        };
+      });
+      rows.sort((a, b) => (a.diff === null) - (b.diff === null) || (b.diff ?? 0) - (a.diff ?? 0));
+      rows.forEach((r, i) => (r.rank = r.diff === null ? "–" : String(i + 1)));
       return rows;
+    },
+
+    // The selected map, one group per team: the team's numbers, then its players by rating.
+    get mrSelTeams() {
+      const mapId = this.mrSel;
+      const m = this.mrMapStats.find((x) => x.id === mapId);
+      if (!m) return [];
+      return this.mrFactionKeys.slice(0, 2).map((f, idx) => {
+        const t = m.teams[idx];
+        const players = (this.mrFactions[f]?.players || []).map((p) => {
+          const ms = p.map_stats?.[mapId];
+          const played = ms?.matches > 0;
+          return {
+            key: f + p.player_id,
+            level: p.skill_level || eloToLevel(p.elo),
+            nickname: p.nickname,
+            faceitUrl: "https://www.faceit.com/en/players/" + encodeURIComponent(p.nickname),
+            steamUrl: p.steam_id_64 ? "https://steamcommunity.com/profiles/" + p.steam_id_64 : "",
+            ripUrl: p.steam_id_64 ? "https://steamcommunity.rip/profiles/" + p.steam_id_64 : "",
+            winPct: played ? ms.wr : null,
+            kd: played ? ms.kd : null,
+            rating: played ? ms.rating : null,
+            matches: played ? ms.matches : 0,
+          };
+        });
+        players.sort((x, y) => (y.rating ?? -1) - (x.rating ?? -1));
+        return {
+          key: f,
+          name: this.mrTeamName(idx),
+          color: idx === 0 ? "text-brand" : "text-blue",
+          dot: idx === 0 ? "bg-brand" : "bg-blue",
+          rating: t.withData ? t.rating.toFixed(2) : "—",
+          ratingColor: t.withData ? ratingColor(t.rating) : "",
+          winPct: t.winPct === null ? "—" : Math.round(t.winPct) + "%",
+          winColor: t.winPct === null ? "" : wrColor(t.winPct),
+          diff: m.diff === null ? null : (idx === 0 ? 1 : -1) * m.diff,
+          players,
+        };
+      });
+    },
+
+    // Only worth a line when the teams can't be compared; otherwise the group headers say it all.
+    get mrSelSummary() {
+      const m = this.mrMapStats.find((x) => x.id === this.mrSel);
+      return m && m.diff === null ? "Not enough games on this map to compare the teams" : "";
+    },
+
+    get mrPoolNote() {
+      return this.mrPoolSource === "match" ? "" : "Unable to load the map list with vetos.";
+    },
+
+    _applyPool(ev) {
+      this.mrMapPool = ev.map_pool || [];
+      this.mrMapNames = ev.map_names || {};
+      this.mrPickedMap = ev.picked_map || null;
+      this.mrPoolSource = ev.map_pool_source || "match";
+      this.mrMatchStatus = ev.match_status || "";
+    },
+
+    // A live room may not have its pool or pick yet: re-check it (one cheap call) until it does.
+    _watchPool(id) {
+      clearTimeout(this._poolTimer);
+      const settled = this.mrPoolSource === "match" && this.mrPickedMap;
+      if (settled || FINAL_STATUSES.includes(this.mrMatchStatus)) return;
+      if (this._poolTries >= POOL_POLL_MAX) return;
+      this._poolTimer = setTimeout(async () => {
+        this._poolTries++;
+        try {
+          const r = await fetch(`/api/matchroom/pool?id=${encodeURIComponent(id)}`);
+          if (r.ok) {
+            this._applyPool(await r.json());
+            if (!this.mrAllMaps.includes(this.mrSel)) this.mrSel = this.mrColumn(0)[0]?.id ?? null;
+          }
+        } catch {
+          // offline for a moment: try again next tick
+        }
+        this._watchPool(id);
+      }, POOL_POLL_MS);
+    },
+
+    get mrFaceitUrl() {
+      return this.mrMatchId ? `https://www.faceit.com/en/cs2/room/${this.mrMatchId}` : "";
+    },
+
+    // Final score in column order (team one first), with who won
+    get mrScoreline() {
+      const r = this.mrResult;
+      const fk = this.mrFactionKeys;
+      if (!r || fk.length < 2) return null;
+      return [0, 1].map((idx) => ({
+        name: this.mrTeamName(idx),
+        score: r.score ? r.score[fk[idx]] ?? "–" : "",
+        won: r.winner === fk[idx],
+        color: idx === 0 ? "text-brand" : "text-blue",
+      }));
+    },
+
+    get mrStatusLabel() {
+      const s = this.mrMatchStatus;
+      if (s === "CANCELLED") return "Cancelled";
+      if (s === "ABORTED") return "Aborted";
+      return "";
     },
 
     get mrFactionKeys() {
@@ -235,12 +226,6 @@ function matchroomApp() {
       const p = new URLSearchParams(window.location.search);
       const id = p.get("id")?.trim();
       if (id) this.$nextTick(() => this._startMatchroom(id));
-      window.addEventListener("beforeunload", () => {
-        if (this._mrEs) {
-          this._mrEs.close();
-          this._mrEs = null;
-        }
-      });
     },
 
     cancelSearch() {
@@ -252,16 +237,30 @@ function matchroomApp() {
     },
 
     _startMatchroom(raw) {
+      // Same check as the server: a match id, on its own or inside a room link
+      const found = String(raw).toLowerCase().match(MATCH_ID_RE);
+      if (!found) {
+        this.mrSearching = false;
+        this.mrError = "That doesn't look like a FACEIT match room link or id.";
+        return;
+      }
+      raw = found[0];
       this.mrMatchId = raw;
+      this.mrResult = null;
       this.mrSearching = true;
       this.mrError = "";
       this.mrStatus = "Connecting…";
       this.mrFactions = {};
       this.mrMapPool = [];
+      this.mrMapNames = {};
       this.mrPickedMap = null;
+      this.mrPoolSource = "match";
+      this.mrMatchStatus = "";
+      clearTimeout(this._poolTimer);
+      this._poolTries = 0;
       this.mrDone = false;
+      this.mrSel = null;
       this._seenPlayers = {};
-      this._expandedMaps = new Set();
 
       const es = new EventSource(
         `/api/matchroom?id=${encodeURIComponent(raw)}`,
@@ -286,11 +285,7 @@ function matchroomApp() {
             this._seenPlayers[ev.faction].add(ev.player_id);
             const factions = { ...this.mrFactions };
             if (!factions[ev.faction])
-              factions[ev.faction] = {
-                name: ev.faction,
-                players: [],
-                map_scores: {},
-              };
+              factions[ev.faction] = { name: ev.faction, players: [] };
             factions[ev.faction] = {
               ...factions[ev.faction],
               players: [
@@ -300,7 +295,9 @@ function matchroomApp() {
                   nickname: ev.nickname,
                   elo: ev.elo,
                   skill_level: ev.skill_level || 0,
+                  steam_id_64: /^\d{17}$/.test(ev.steam_id_64 || "") ? ev.steam_id_64 : "",
                   map_stats: ev.map_stats,
+                  overall_rating: ev.overall_rating ?? null,
                 },
               ],
             };
@@ -311,27 +308,24 @@ function matchroomApp() {
             const updated = { ...this.mrFactions };
             for (const [faction, data] of Object.entries(ev.factions)) {
               if (!updated[faction]) updated[faction] = { players: [] };
-              updated[faction] = {
-                ...updated[faction],
-                name: data.name,
-                map_scores: data.map_scores,
-              };
+              updated[faction] = { ...updated[faction], name: data.name };
             }
             this.mrFactions = updated;
-            this.mrMapPool = ev.map_pool;
-            this.mrPickedMap = ev.picked_map;
+            this._applyPool(ev);
+            this.mrResult = ev.result || null;
             break;
           }
           case "done":
             this.mrSearching = false;
             this.mrDone = true;
-            this._autoExpand();
+            this.mrSel = this.mrColumn(0)[0]?.id ?? null; // team one's best map first
+            this._watchPool(raw);
             es.close();
             this._mrEs = null;
             break;
           case "error":
             this.mrSearching = false;
-            this.mrError = friendlyError(ev.msg);
+            this.mrError = friendlyError(ev.msg, ev.status);
             es.close();
             this._mrEs = null;
             break;
@@ -339,7 +333,6 @@ function matchroomApp() {
       };
       es.onerror = () => {
         if (this.mrDone || this.mrError) return;
-        if (es.readyState === EventSource.CLOSED) return;
         this.mrSearching = false;
         this.mrError = "Connection lost. Please try again.";
         es.close();

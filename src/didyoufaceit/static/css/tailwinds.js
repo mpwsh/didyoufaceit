@@ -1,11 +1,10 @@
 tailwind.config = {
-  darkMode: "class",
   theme: {
     extend: {
       colors: {
-        brand: { DEFAULT: "#ff5500", dim: "#cc4400" },
+        brand: "#ff5500",
         surface: { DEFAULT: "#141414", alt: "#1a1a1a" },
-        border: { DEFAULT: "#2a2a2a", strong: "#3a3a3a" },
+        border: "#2a2a2a",
         win: "#22c55e",
         lose: "#ef4444",
         muted: "#666666",

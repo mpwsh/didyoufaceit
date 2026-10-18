@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -11,7 +11,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script
       defer
-      src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js"
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.4/dist/cdn.min.js"
     ></script>
     <link rel="icon" type="image/svg+xml" href="/static/icons/crosshair.svg" />
     <link rel="stylesheet" href="/static/css/style.css" />
@@ -22,7 +22,6 @@
   <body
     class="bg-[#0d0d0d] text-[#e8e8e8] font-sans min-h-screen overflow-x-hidden"
     x-data="vsApp()"
-    x-init="init()"
   >
     <div class="relative z-10 max-w-4xl mx-auto px-6">
       <!-- ── Header ── -->
@@ -116,7 +115,7 @@
         >
           <div
             class="text-center p-7 transition-colors"
-            :class="youWins > oppWins ? 'bg-[#0a1a0a]' : oppWins > youWins ? 'bg-[#160a0a]' : 'bg-surface'"
+            :class="stats.youWins > stats.oppWins ? 'bg-[#0a1a0a]' : stats.oppWins > stats.youWins ? 'bg-[#160a0a]' : 'bg-surface'"
           >
             <div
               class="font-display text-[clamp(18px,2.5vw,26px)] tracking-widest mb-1 break-all"
@@ -124,12 +123,12 @@
             ></div>
             <div
               class="font-display text-[clamp(44px,7vw,68px)] leading-none"
-              :class="youWins > oppWins ? 'text-win' : oppWins > youWins ? 'text-lose' : 'text-brand'"
-              x-text="youWins"
+              :class="stats.youWins > stats.oppWins ? 'text-win' : stats.oppWins > stats.youWins ? 'text-lose' : 'text-brand'"
+              x-text="stats.youWins"
             ></div>
             <div
               class="font-mono text-[10px] tracking-[2px] uppercase text-muted mt-1"
-              x-text="youWins === 1 ? 'win' : 'wins'"
+              x-text="stats.youWins === 1 ? 'win' : 'wins'"
             ></div>
           </div>
           <div
@@ -145,11 +144,11 @@
               ></div>
               <div class="font-mono text-[10px] text-muted">matches</div>
             </div>
-            <template x-if="draws > 0">
+            <template x-if="stats.draws > 0">
               <div class="text-center">
                 <div
                   class="font-display text-xl text-[#e8e8e8]"
-                  x-text="draws"
+                  x-text="stats.draws"
                 ></div>
                 <div class="font-mono text-[10px] text-muted">draws</div>
               </div>
@@ -157,7 +156,7 @@
           </div>
           <div
             class="text-center p-7 transition-colors"
-            :class="oppWins > youWins ? 'bg-[#0a1a0a]' : youWins > oppWins ? 'bg-[#160a0a]' : 'bg-surface'"
+            :class="stats.oppWins > stats.youWins ? 'bg-[#0a1a0a]' : stats.youWins > stats.oppWins ? 'bg-[#160a0a]' : 'bg-surface'"
           >
             <div
               class="font-display text-[clamp(18px,2.5vw,26px)] tracking-widest mb-1 break-all"
@@ -165,12 +164,12 @@
             ></div>
             <div
               class="font-display text-[clamp(44px,7vw,68px)] leading-none"
-              :class="oppWins > youWins ? 'text-win' : youWins > oppWins ? 'text-lose' : 'text-brand'"
-              x-text="oppWins"
+              :class="stats.oppWins > stats.youWins ? 'text-win' : stats.youWins > stats.oppWins ? 'text-lose' : 'text-brand'"
+              x-text="stats.oppWins"
             ></div>
             <div
               class="font-mono text-[10px] tracking-[2px] uppercase text-muted mt-1"
-              x-text="oppWins === 1 ? 'win' : 'wins'"
+              x-text="stats.oppWins === 1 ? 'win' : 'wins'"
             ></div>
           </div>
         </div>
@@ -186,49 +185,49 @@
           <template x-if="teammates.length > 0">
             <span
               class="font-mono text-[11px] text-blue bg-[#0a1a2a] border border-[#1a3a5a] px-2.5 py-0.5 rounded-sm"
-              x-text="filteredTeammates.length + ' matches'"
+              x-text="stats.filteredTeammates.length + ' matches'"
             ></span>
           </template>
           <template x-if="teammates.length > 0">
             <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
               <div class="flex gap-3 font-mono text-[12px]">
-                <span class="text-win" x-text="tmWins + 'W'"></span>
-                <span class="text-lose" x-text="tmLosses + 'L'"></span>
-                <template x-if="tmDraws > 0"
-                  ><span class="text-muted" x-text="tmDraws + 'D'"></span
+                <span class="text-win" x-text="stats.tmWins + 'W'"></span>
+                <span class="text-lose" x-text="stats.tmLosses + 'L'"></span>
+                <template x-if="stats.tmDraws > 0"
+                  ><span class="text-muted" x-text="stats.tmDraws + 'D'"></span
                 ></template>
               </div>
               <div class="w-px self-stretch bg-border flex-shrink-0"></div>
               <span
                 class="font-mono text-[11px]"
-                :class="tmWr >= 55 ? 'text-win' : tmWr <= 40 ? 'text-lose' : 'text-[#e8e8e8]'"
-                x-text="tmWr + '% wr'"
+                :style="`color:${wrColor(stats.tmWr)}`"
+                x-text="stats.tmWr + '% wr'"
               ></span>
-              <template x-if="bestMap">
+              <template x-if="stats.bestMap">
                 <div class="flex items-center gap-1.5 font-mono text-[11px]">
                   <div class="w-px self-stretch bg-border flex-shrink-0"></div>
                   <span class="text-muted">best</span>
                   <span
                     class="font-display tracking-wide text-win text-[13px]"
-                    x-text="bestMap"
+                    x-text="mapDisplayName(stats.bestMap)"
                   ></span>
                   <span
                     class="text-muted"
-                    x-text="mapStatsLabel(bestMap)"
+                    x-text="mapStatsLabel(stats.bestMap)"
                   ></span>
                 </div>
               </template>
-              <template x-if="worstMap">
+              <template x-if="stats.worstMap">
                 <div class="flex items-center gap-1.5 font-mono text-[11px]">
                   <div class="w-px self-stretch bg-border flex-shrink-0"></div>
                   <span class="text-muted">worst</span>
                   <span
                     class="font-display tracking-wide text-lose text-[13px]"
-                    x-text="worstMap"
+                    x-text="mapDisplayName(stats.worstMap)"
                   ></span>
                   <span
                     class="text-muted"
-                    x-text="mapStatsLabel(worstMap)"
+                    x-text="mapStatsLabel(stats.worstMap)"
                   ></span>
                 </div>
               </template>
@@ -242,7 +241,7 @@
         </div>
 
         <!-- ── BEST LINEUPS ── -->
-        <template x-if="bestLineups.length > 0">
+        <template x-if="stats.bestLineups.length > 0">
           <div class="mb-8" x-data="{ showAllLineups: false }">
             <div class="flex items-center gap-4 mb-4">
               <div class="font-display text-[22px] tracking-[3px]">
@@ -256,8 +255,8 @@
             </div>
             <div class="flex flex-col gap-2">
               <template
-                x-for="(lu, i) in (showAllLineups ? bestLineups : bestLineups.slice(0, 3))"
-                :key="lu.roster.join('|')"
+                x-for="(lu, i) in (showAllLineups ? stats.bestLineups : stats.bestLineups.slice(0, 3))"
+                :key="lu.key"
               >
                 <div
                   class="bg-surface border border-border px-5 py-3.5 grid grid-cols-[24px_1fr_auto] gap-4 items-center card-enter"
@@ -269,10 +268,10 @@
                   <div
                     class="font-mono text-[11px] flex flex-wrap gap-x-2 gap-y-1 min-w-0"
                   >
-                    <template x-for="nick in lu.roster" :key="nick">
+                    <template x-for="(p, pi) in lu.roster" :key="p.name + pi">
                       <span
-                        :class="nick === you ? 'text-brand' : nick === opp ? 'text-blue' : 'text-[#e8e8e8]'"
-                        x-text="nick"
+                        :class="p.cls || 'text-[#e8e8e8]'"
+                        x-text="p.name"
                       ></span>
                     </template>
                   </div>
@@ -290,17 +289,17 @@
                     ></span>
                     <div
                       class="font-display text-[20px] leading-none w-14 text-right"
-                      :class="lu.wr >= 55 ? 'text-win' : lu.wr <= 40 ? 'text-lose' : 'text-[#e8e8e8]'"
+                      :style="`color:${wrColor(lu.wr)}`"
                       x-text="lu.wr + '%'"
                     ></div>
                   </div>
                 </div>
               </template>
-              <template x-if="bestLineups.length > 3">
+              <template x-if="stats.bestLineups.length > 3">
                 <button
                   @click="showAllLineups = !showAllLineups"
                   class="font-mono text-[11px] text-muted border border-border py-2 text-center hover:border-brand hover:text-[#e8e8e8] transition-colors"
-                  x-text="showAllLineups ? 'Show less' : 'Show all ' + bestLineups.length + ' lineups'"
+                  x-text="showAllLineups ? 'Show less' : 'Show all ' + stats.bestLineups.length + ' lineups'"
                 ></button>
               </template>
             </div>
@@ -315,12 +314,12 @@
                 class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-10 flex-shrink-0"
                 >MAP</span
               >
-              <template x-for="map in availableMaps" :key="map">
+              <template x-for="map in stats.availableMaps" :key="map">
                 <button
                   @click="filterMap = map"
                   :class="filterMap === map ? 'bg-brand text-white border-brand' : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
                   class="font-mono text-[10px] tracking-[1px] uppercase border px-2.5 py-1 transition-colors"
-                  x-text="map === 'all' ? 'ALL' : map.replace('de_', '')"
+                  x-text="map === 'all' ? 'ALL' : mapDisplayName(map)"
                 ></button>
               </template>
             </div>
@@ -329,7 +328,7 @@
                 class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-10 flex-shrink-0"
                 >YEAR</span
               >
-              <template x-for="year in availableYears" :key="year">
+              <template x-for="year in stats.availableYears" :key="year">
                 <button
                   @click="filterYear = String(year)"
                   :class="filterYear === String(year) ? 'bg-brand text-white border-brand' : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
@@ -338,13 +337,13 @@
                 ></button>
               </template>
             </div>
-            <template x-if="availableModes.length > 2">
+            <template x-if="stats.availableModes.length > 2">
               <div class="flex items-center gap-2 flex-wrap">
                 <span
                   class="font-mono text-[10px] tracking-[2px] uppercase text-muted w-10 flex-shrink-0"
                   >MODE</span
                 >
-                <template x-for="mode in availableModes" :key="mode">
+                <template x-for="mode in stats.availableModes" :key="mode">
                   <button
                     @click="filterMode = mode"
                     :class="filterMode === mode ? 'bg-brand text-white border-brand' : 'bg-surface border-border text-muted hover:border-brand hover:text-[#e8e8e8]'"
@@ -364,7 +363,7 @@
               <div class="font-display text-[22px] tracking-[3px]">ENEMIES</div>
               <span
                 class="font-mono text-[11px] bg-[#2a0a0a] text-lose border border-[#4a1a1a] px-2.5 py-0.5 rounded-sm"
-                x-text="filteredEnemies.length + ' matches'"
+                x-text="stats.filteredEnemies.length + ' matches'"
               ></span>
               <div class="flex-1 h-px bg-border"></div>
             </div>
@@ -422,13 +421,13 @@
                   </div>
                 </a>
               </template>
-              <template x-if="filteredEnemies.length > enemiesShown">
-                <div
-                  x-init="let ob = new IntersectionObserver(([e]) => { if (e.isIntersecting) enemiesShown += 25 }, { rootMargin: '200px' }); ob.observe($el);"
-                  class="font-mono text-[11px] text-muted py-3 text-center blink"
+              <template x-if="stats.filteredEnemies.length > enemiesShown">
+                <button
+                  @click="enemiesShown += 25"
+                  class="font-mono text-[11px] text-muted border border-border py-2 text-center hover:border-brand hover:text-[#e8e8e8] transition-colors"
                 >
-                  loading more…
-                </div>
+                  Show more
+                </button>
               </template>
             </div>
           </div>
@@ -443,7 +442,7 @@
               </div>
               <span
                 class="font-mono text-[11px] bg-[#0a1a2a] text-blue border border-[#1a3a5a] px-2.5 py-0.5 rounded-sm"
-                x-text="filteredTeammates.length + ' matches'"
+                x-text="stats.filteredTeammates.length + ' matches'"
               ></span>
               <div class="flex-1 h-px bg-border"></div>
             </div>
@@ -501,13 +500,13 @@
                   </div>
                 </a>
               </template>
-              <template x-if="filteredTeammates.length > teammatesShown">
-                <div
-                  x-init="let ob = new IntersectionObserver(([e]) => { if (e.isIntersecting) teammatesShown += 25 }, { rootMargin: '200px' }); ob.observe($el);"
-                  class="font-mono text-[11px] text-muted py-3 text-center blink"
+              <template x-if="stats.filteredTeammates.length > teammatesShown">
+                <button
+                  @click="teammatesShown += 25"
+                  class="font-mono text-[11px] text-muted border border-border py-2 text-center hover:border-brand hover:text-[#e8e8e8] transition-colors"
                 >
-                  loading more…
-                </div>
+                  Show more
+                </button>
               </template>
             </div>
           </div>

@@ -6,22 +6,16 @@ function homeApp() {
     oppInput: "",
     matchroomInput: "",
     banScanInput: "",
+    searchError: "",
 
     doSearch() {
-      if (this.banScanInput.trim()) {
-        this.doBanScan();
-        return;
-      }
-      if (this.matchroomInput.trim()) {
-        this.doMatchroom();
-        return;
-      }
       const you = this.youInput.trim();
       const opp = this.oppInput.trim();
       if (!you || !opp) {
-        alert("Please enter both nicknames.");
+        this.searchError = "Please enter both nicknames.";
         return;
       }
+      this.searchError = "";
       window.location.href = `/vs?a=${encodeURIComponent(you)}&b=${encodeURIComponent(opp)}`;
     },
 

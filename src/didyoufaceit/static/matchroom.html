@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -11,7 +11,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script
       defer
-      src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js"
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.4/dist/cdn.min.js"
     ></script>
     <link rel="icon" type="image/svg+xml" href="/static/icons/crosshair.svg" />
     <link rel="stylesheet" href="/static/css/style.css" />
@@ -22,9 +22,8 @@
   <body
     class="bg-[#0d0d0d] text-[#e8e8e8] font-sans min-h-screen overflow-x-hidden"
     x-data="matchroomApp()"
-    x-init="init()"
   >
-    <div class="relative z-10 max-w-4xl mx-auto px-6">
+    <div class="relative z-10 max-w-5xl mx-auto px-6">
       <!-- ── Header ── -->
       <div
         class="flex items-center justify-between py-4 border-b border-border mb-8"
@@ -87,276 +86,327 @@
         </div>
       </template>
 
-      <!-- ── MAP ADVANTAGE ── -->
+      <!-- ── MAPS: one column per team, best → worst against this opponent ── -->
       <template x-if="mrDone && mrFactionKeys.length >= 2">
         <div class="pb-8">
-          <!-- Title -->
-          <div class="flex items-center justify-between mb-6">
-            <div class="font-display text-[24px] tracking-[3px]">MATCHROOM</div>
-            <div x-show="mrPickedMap" class="flex items-center gap-2">
-              <span
-                class="font-mono text-[10px] tracking-[2px] uppercase text-muted"
-                >Picked</span
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-6">
+            <div class="flex items-center gap-3">
+              <h1 class="font-display text-[24px] tracking-[3px] font-normal">
+                MATCHROOM
+              </h1>
+              <a
+                :href="mrFaceitUrl"
+                target="_blank"
+                rel="noopener"
+                class="font-mono text-[11px] tracking-[1.5px] uppercase whitespace-nowrap text-muted border border-border px-2 py-1 hover:text-brand hover:border-brand/60 transition-colors"
+                >FACEIT ↗</a
               >
               <span
-                class="font-display text-lg tracking-widest text-brand"
-                x-text="mrMapName(mrPickedMap)"
+                x-show="mrStatusLabel"
+                class="font-mono text-[11px] tracking-[1.5px] uppercase text-lose"
+                x-text="mrStatusLabel"
               ></span>
             </div>
           </div>
-
-          <!-- Column labels -->
-          <div class="grid grid-cols-[1fr_auto_1fr] gap-0 mb-2 px-1">
-            <div class="flex items-center gap-2">
-              <span
-                class="font-display text-[14px] tracking-[2px] text-brand"
-                x-text="mrTeamName(0)"
-              ></span>
-              <span class="font-mono text-[9px] text-muted">edge</span>
-            </div>
-            <div class="font-mono text-[9px] text-muted px-4">
-              avg hltv per map
-            </div>
-            <div class="flex items-center justify-end gap-2">
-              <span class="font-mono text-[9px] text-muted">edge</span>
-              <span
-                class="font-display text-[14px] tracking-[2px] text-blue"
-                x-text="mrTeamName(1)"
-              ></span>
-            </div>
-          </div>
-
-          <!-- Unified map list -->
-          <div class="flex flex-col gap-1.5">
-            <template x-for="(row, idx) in mrMapRows" :key="row.id">
-              <div
-                class="bg-surface border border-border overflow-hidden"
-                :class="idx === 0 ? 'border-win/30' : idx === mrMapRows.length - 1 ? 'border-win/30' : ''"
-              >
-                <!-- Map row (click to expand) -->
-                <div
-                  class="grid grid-cols-[minmax(50px,80px)_1fr_auto_1fr_minmax(50px,80px)] gap-0 items-center cursor-pointer select-none transition-colors"
-                  :class="idx === 0 ? 'bg-[#0a1a0a]/50' : idx === mrMapRows.length - 1 ? 'bg-[#0a0a1a]/50' : 'hover:bg-surface-alt'"
-                  @click="toggleMap(row.id)"
-                >
-                  <!-- Team A delta (left edge) -->
-                  <div class="px-3 py-2.5 flex items-center gap-1.5">
-                    <template x-if="idx === 0">
-                      <span
-                        class="font-mono text-[8px] tracking-[1px] uppercase text-win bg-[#0a2a0a] border border-[#1a4a1a] px-1.5 py-0.5 rounded-sm"
-                        >PICK</span
-                      >
-                    </template>
-                    <template x-if="idx === mrMapRows.length - 1">
-                      <span
-                        class="font-mono text-[8px] tracking-[1px] uppercase text-lose bg-[#2a0a0a] border border-[#4a1a1a] px-1.5 py-0.5 rounded-sm"
-                        >BAN</span
-                      >
-                    </template>
+          <template x-if="mrScoreline">
+            <div class="-mt-2 mb-5">
+            <!-- Phone: one row per team, scoreboard style -->
+            <div class="sm:hidden bg-surface border border-border px-3 py-2">
+              <div class="font-mono text-[10px] tracking-[2px] uppercase text-muted pb-1">Final</div>
+              <template x-for="t in mrScoreline" :key="t.name">
+                <div class="flex items-center justify-between gap-3 py-1">
+                  <span class="flex items-center gap-2 min-w-0">
                     <span
-                      class="font-mono text-[12px] font-medium"
-                      :class="row.delta > 0 ? 'text-win' : row.delta < 0 ? 'text-lose' : 'text-muted'"
-                      x-text="(row.delta > 0 ? '+' : '') + row.delta"
+                      class="font-display text-[17px] tracking-[1.5px] truncate"
+                      :class="t.won ? t.color : 'text-muted'"
+                      x-text="t.name"
                     ></span>
-                  </div>
-
-                  <!-- Team A avg HLTV -->
-                  <div
-                    class="font-mono text-[10px] text-muted text-right pr-3"
-                    x-text="row.f1avgRating ? row.f1avgRating.toFixed(2) : '—'"
-                  ></div>
-
-                  <!-- Map name (center) -->
-                  <div
-                    class="flex items-center justify-center gap-2 px-3 py-2.5"
-                  >
                     <span
-                      class="font-display text-[16px] tracking-widest"
-                      x-text="mrMapName(row.id)"
-                    ></span>
-                    <template x-if="row.lowData">
-                      <span
-                        class="font-mono text-[7px] tracking-[1px] uppercase text-[#666] bg-[#1a1a1a] border border-[#333] px-1 py-0.5 rounded-sm"
-                        >LOW</span
-                      >
-                    </template>
-                    <svg
-                      class="size-3 text-muted transition-transform"
-                      :class="isExpanded(row.id) ? 'rotate-180' : ''"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      stroke-width="2"
+                      x-show="t.won"
+                      class="font-mono text-[10px] tracking-[1.5px] px-1.5 py-[1px] text-win bg-win/10 shrink-0"
+                      >WIN</span
                     >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
-                  </div>
-
-                  <!-- Team B avg HLTV -->
-                  <div
-                    class="font-mono text-[10px] text-muted text-left pl-3"
-                    x-text="row.f2avgRating ? row.f2avgRating.toFixed(2) : '—'"
-                  ></div>
-
-                  <!-- Team B delta (right edge) -->
-                  <div
-                    class="px-3 py-2.5 flex items-center justify-end gap-1.5"
-                  >
-                    <span
-                      class="font-mono text-[12px] font-medium"
-                      :class="-row.delta > 0 ? 'text-win' : -row.delta < 0 ? 'text-lose' : 'text-muted'"
-                      x-text="(-row.delta > 0 ? '+' : '') + (-row.delta)"
-                    ></span>
-                    <template x-if="idx === mrMapRows.length - 1">
-                      <span
-                        class="font-mono text-[8px] tracking-[1px] uppercase text-win bg-[#0a2a0a] border border-[#1a4a1a] px-1.5 py-0.5 rounded-sm"
-                        >PICK</span
-                      >
-                    </template>
-                    <template x-if="idx === 0">
-                      <span
-                        class="font-mono text-[8px] tracking-[1px] uppercase text-lose bg-[#2a0a0a] border border-[#4a1a1a] px-1.5 py-0.5 rounded-sm"
-                        >BAN</span
-                      >
-                    </template>
-                  </div>
+                  </span>
+                  <span
+                    class="font-display text-[24px] tracking-[1px] leading-none"
+                    :class="t.won ? '' : 'text-muted'"
+                    x-text="t.score"
+                  ></span>
                 </div>
-
-                <!-- Expandable player breakdown -->
-                <div
-                  x-show="isExpanded(row.id)"
-                  x-transition.duration.150ms
-                  class="border-t border-border/50"
-                >
-                  <div class="grid grid-cols-2 divide-x divide-border/30">
-                    <!-- Team A players -->
-                    <div class="px-3 py-2">
-                      <div
-                        class="font-mono text-[7px] tracking-[1px] uppercase text-[#444] mb-1 grid grid-cols-[14px_1fr_28px_28px_32px_36px] gap-1"
-                      >
-                        <span>LV</span><span>PLAYER</span
-                        ><span class="text-right">WR</span
-                        ><span class="text-right">K/D</span
-                        ><span class="text-right">HLTV</span
-                        ><span class="text-right">MTCH</span>
-                      </div>
-                      <template
-                        x-for="(c, pIdx) in row.f1contribs"
-                        :key="'f1-' + pIdx"
-                      >
-                        <div
-                          class="grid grid-cols-[14px_1fr_28px_28px_32px_36px] gap-1 items-center py-[2px]"
-                          :class="c.matches < 20 ? 'opacity-40' : ''"
-                        >
-                          <span
-                            class="font-mono text-[9px] text-center font-medium"
-                            :style="`color:${mrLevelColor(c.level)}`"
-                            x-text="c.level || '—'"
-                          ></span>
-                          <span
-                            class="font-mono text-[9px] truncate"
-                            x-text="c.nickname"
-                          ></span>
-                          <span
-                            class="font-mono text-[9px] text-right"
-                            :style="`color:${mrWrColor(c.wr)}`"
-                            x-text="c.wr+'%'"
-                          ></span>
-                          <span
-                            class="font-mono text-[8px] text-right"
-                            :style="`color:${mrKdColor(c.kd)}`"
-                            x-text="c.kd ? c.kd.toFixed(2) : '—'"
-                          ></span>
-                          <span
-                            class="font-mono text-[8px] text-right"
-                            :style="`color:${mrRatingColor(c.rating)}`"
-                            x-text="c.rating ? c.rating.toFixed(2) : '—'"
-                          ></span>
-                          <span
-                            class="font-mono text-[8px] text-muted text-right"
-                            x-text="c.matches"
-                          ></span>
-                        </div>
-                      </template>
-                      <template x-if="row.f1contribs.length === 0">
-                        <div class="font-mono text-[9px] text-muted py-1">
-                          no data
-                        </div>
-                      </template>
-                    </div>
-                    <!-- Team B players -->
-                    <div class="px-3 py-2">
-                      <div
-                        class="font-mono text-[7px] tracking-[1px] uppercase text-[#444] mb-1 grid grid-cols-[14px_1fr_28px_28px_32px_36px] gap-1"
-                      >
-                        <span>LV</span><span>PLAYER</span
-                        ><span class="text-right">WR</span
-                        ><span class="text-right">K/D</span
-                        ><span class="text-right">HLTV</span
-                        ><span class="text-right">MTCH</span>
-                      </div>
-                      <template
-                        x-for="(c, pIdx) in row.f2contribs"
-                        :key="'f2-' + pIdx"
-                      >
-                        <div
-                          class="grid grid-cols-[14px_1fr_28px_28px_32px_36px] gap-1 items-center py-[2px]"
-                          :class="c.matches < 20 ? 'opacity-40' : ''"
-                        >
-                          <span
-                            class="font-mono text-[9px] text-center font-medium"
-                            :style="`color:${mrLevelColor(c.level)}`"
-                            x-text="c.level || '—'"
-                          ></span>
-                          <span
-                            class="font-mono text-[9px] truncate"
-                            x-text="c.nickname"
-                          ></span>
-                          <span
-                            class="font-mono text-[9px] text-right"
-                            :style="`color:${mrWrColor(c.wr)}`"
-                            x-text="c.wr+'%'"
-                          ></span>
-                          <span
-                            class="font-mono text-[8px] text-right"
-                            :style="`color:${mrKdColor(c.kd)}`"
-                            x-text="c.kd ? c.kd.toFixed(2) : '—'"
-                          ></span>
-                          <span
-                            class="font-mono text-[8px] text-right"
-                            :style="`color:${mrRatingColor(c.rating)}`"
-                            x-text="c.rating ? c.rating.toFixed(2) : '—'"
-                          ></span>
-                          <span
-                            class="font-mono text-[8px] text-muted text-right"
-                            x-text="c.matches"
-                          ></span>
-                        </div>
-                      </template>
-                      <template x-if="row.f2contribs.length === 0">
-                        <div class="font-mono text-[9px] text-muted py-1">
-                          no data
-                        </div>
-                      </template>
-                    </div>
-                  </div>
-                </div>
+              </template>
+              <div class="flex justify-center border-t border-border/50 mt-1 pt-1.5">
+                <span x-show="mrPickedMap" class="flex items-center gap-2 font-mono text-[10px] tracking-[2px] uppercase text-muted"
+                  >Picked
+                  <span class="font-display text-[16px] tracking-[2px] text-brand" x-text="mrMapName(mrPickedMap)"></span
+                ></span>
               </div>
+            </div>
+            <!-- Wider: name, score, name -->
+            <div
+              class="hidden sm:grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-5 bg-surface border border-border px-5 py-3"
+            >
+              <div class="flex items-center justify-end gap-2 min-w-0">
+                <span
+                  x-show="mrScoreline[0].won"
+                  class="font-mono text-[10px] tracking-[1.5px] px-1.5 py-[1px] text-win bg-win/10 shrink-0"
+                  >WIN</span
+                >
+                <span
+                  class="font-display text-[20px] tracking-[1.5px] truncate"
+                  :class="mrScoreline[0].won ? mrScoreline[0].color : 'text-muted'"
+                  x-text="mrScoreline[0].name"
+                ></span>
+              </div>
+              <div class="flex flex-col items-center">
+                <span class="font-mono text-[10px] tracking-[2px] uppercase text-muted">Final</span>
+                <span class="font-display text-[32px] tracking-[2px] leading-none whitespace-nowrap">
+                  <span :class="mrScoreline[0].won ? '' : 'text-muted'" x-text="mrScoreline[0].score"></span
+                  ><span class="text-muted mx-1.5">:</span
+                  ><span :class="mrScoreline[1].won ? '' : 'text-muted'" x-text="mrScoreline[1].score"></span>
+                </span>
+                <span class="mt-1.5">
+                <span x-show="mrPickedMap" class="flex items-center gap-2 font-mono text-[10px] tracking-[2px] uppercase text-muted"
+                  >Picked
+                  <span class="font-display text-[16px] tracking-[2px] text-brand" x-text="mrMapName(mrPickedMap)"></span
+                ></span>
+                </span>
+              </div>
+              <div class="flex items-center gap-2 min-w-0">
+                <span
+                  class="font-display text-[20px] tracking-[1.5px] truncate"
+                  :class="mrScoreline[1].won ? mrScoreline[1].color : 'text-muted'"
+                  x-text="mrScoreline[1].name"
+                ></span>
+                <span
+                  x-show="mrScoreline[1].won"
+                  class="font-mono text-[10px] tracking-[1.5px] px-1.5 py-[1px] text-win bg-win/10 shrink-0"
+                  >WIN</span
+                >
+              </div>
+            </div>
+            </div>
+          </template>
+          <div x-show="!mrScoreline && mrPickedMap" class="flex justify-center -mt-2 mb-5">
+            <span class="flex items-center gap-2 bg-surface border border-border px-4 py-2">
+              <span class="font-mono text-[11px] tracking-[2px] uppercase text-muted">Picked</span>
+              <span class="font-display text-[20px] tracking-[2px] text-brand" x-text="mrMapName(mrPickedMap)"></span>
+            </span>
+          </div>
+          <p
+            x-show="mrPoolNote"
+            class="font-mono text-[11px] leading-relaxed text-gold border border-gold/30 bg-gold/5 px-3 py-2 -mt-3 mb-5"
+            x-text="mrPoolNote"
+          ></p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <template x-for="idx in [0, 1]" :key="idx">
+              <section class="bg-surface border border-border p-3 sm:p-4">
+                <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-3">
+                  <h2
+                    class="font-display text-[20px] tracking-[2px] font-normal truncate"
+                    :class="idx === 0 ? 'text-brand' : 'text-blue'"
+                    x-text="mrTeamName(idx)"
+                  ></h2>
+                </div>
+                <div
+                  class="flex items-center gap-1.5 sm:gap-2 px-2 pb-1 font-mono text-[10px] tracking-[1px] uppercase text-muted"
+                >
+                  <span class="hidden sm:block w-4 shrink-0">#</span
+                  ><span class="flex-1 min-w-0">Map</span
+                  ><span class="w-9 sm:w-12 shrink-0 text-right">Rating</span
+                  ><span class="hidden sm:block w-12 shrink-0 text-right">Win %</span
+                  ><span class="hidden sm:block w-16 shrink-0 text-right">Matches</span
+                  ><span class="w-14 sm:w-16 shrink-0 text-right">Diff</span>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <template x-for="row in mrColumn(idx)" :key="row.id">
+                    <button
+                      type="button"
+                      @click="mrSelect(row.id)"
+                      :aria-pressed="mrSel === row.id"
+                      class="w-full flex gap-1.5 sm:gap-2 items-center min-h-[44px] px-2 text-left border transition-colors"
+                      :class="mrSel === row.id ? (idx === 0 ? 'border-brand/60 bg-surface-alt' : 'border-blue/60 bg-surface-alt') : 'border-transparent hover:bg-surface-alt'"
+                    >
+                      <span
+                        class="hidden sm:block w-4 shrink-0 font-mono text-[12px] text-muted"
+                        x-text="row.rank"
+                      ></span>
+                      <span
+                        class="flex-1 min-w-0 font-display text-[16px] sm:text-[19px] tracking-[1px] sm:tracking-[1.5px] truncate"
+                        :class="row.diff === null ? 'text-muted' : ''"
+                        x-text="mrMapName(row.id)"
+                      ></span>
+                      <span
+                        class="w-9 sm:w-12 shrink-0 font-mono text-[13px] text-right"
+                        :style="row.ratingColor && `color:${row.ratingColor}`"
+                        x-text="row.rating"
+                      ></span>
+                      <span
+                        class="hidden sm:block w-12 shrink-0 font-mono text-[13px] text-right"
+                        :style="row.winColor && `color:${row.winColor}`"
+                        x-text="row.winPct"
+                      ></span>
+                      <span
+                        class="hidden sm:block w-16 shrink-0 font-mono text-[12px] text-right"
+                        :class="row.lowData ? 'text-muted' : 'text-[#a3a3a3]'"
+                        :title="row.lowData ? 'Fewer than 3 players have played this map' : ''"
+                        x-text="row.matches"
+                      ></span>
+                      <span class="w-14 sm:w-16 shrink-0 flex justify-end">
+                        <span
+                          class="font-mono text-[12px] px-2 py-[2px] rounded-full whitespace-nowrap"
+                          :class="diffClass(row.diff)"
+                          x-text="fmtDiff(row.diff)"
+                        ></span>
+                      </span>
+                    </button>
+                  </template>
+                </div>
+              </section>
             </template>
           </div>
 
-          <!-- Footer note -->
-          <div class="font-mono text-[10px] text-muted mt-4 tracking-wide">
-            Edge = composite score (80% HLTV rating, 20% win rate,
-            confidence-weighted by match count). Sorted by edge for
-            <span class="text-brand" x-text="mrTeamName(0)"></span> (top) →
-            <span class="text-blue" x-text="mrTeamName(1)"></span> (bottom).
-            Faded players = &lt;20 matches.
-          </div>
+          <!-- Players on the selected map, grouped by team -->
+          <section
+            x-show="mrSel"
+            class="bg-surface border border-border p-3 sm:p-4 mt-4"
+          >
+            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+              <h2 class="font-display text-[20px] tracking-[2px] font-normal">
+                <span x-text="mrMapName(mrSel)"></span> · players
+              </h2>
+              <span
+                class="font-mono text-[11px] text-muted"
+                x-text="mrSelSummary"
+              ></span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+              <template x-for="team in mrSelTeams" :key="team.key">
+                <div class="min-w-0">
+                  <div
+                    class="flex flex-col gap-1 px-2 pb-2 mb-1 border-b border-border"
+                  >
+                    <span class="flex items-center gap-2 min-w-0">
+                      <span class="size-2 shrink-0" :class="team.dot"></span>
+                      <span
+                        class="font-display text-[17px] tracking-[1.5px] truncate"
+                        :class="team.color"
+                        x-text="team.name"
+                      ></span>
+                    </span>
+                    <span class="flex items-center gap-3 font-mono text-[11px] text-muted">
+                      <span
+                        >Rating
+                        <span
+                          class="text-[12px]"
+                          :style="team.ratingColor && `color:${team.ratingColor}`"
+                          x-text="team.rating"
+                        ></span
+                      ></span>
+                      <span class="hidden sm:inline"
+                        >Win %
+                        <span
+                          class="text-[12px]"
+                          :style="team.winColor && `color:${team.winColor}`"
+                          x-text="team.winPct"
+                        ></span
+                      ></span>
+                      <span
+                        class="text-[12px] px-2 py-[2px] rounded-full whitespace-nowrap"
+                        :class="diffClass(team.diff)"
+                        x-text="fmtDiff(team.diff)"
+                      ></span>
+                    </span>
+                  </div>
+                  <div
+                    class="grid grid-cols-[20px_minmax(0,1fr)_38px] sm:grid-cols-[18px_minmax(0,1fr)_36px_34px_38px_46px] gap-1.5 px-2 pb-1 font-mono text-[10px] tracking-[0.5px] uppercase text-muted"
+                  >
+                    <span>LVL</span><span>Player</span
+                    ><span class="hidden sm:block text-right">Win %</span
+                    ><span class="hidden sm:block text-right">K/D</span
+                    ><span class="text-right">Rating</span
+                    ><span class="hidden sm:block text-right">Matches</span>
+                  </div>
+                  <template x-for="p in team.players" :key="p.key">
+                    <div
+                      class="grid grid-cols-[20px_minmax(0,1fr)_38px] sm:grid-cols-[18px_minmax(0,1fr)_36px_34px_38px_46px] gap-1.5 items-center min-h-[34px] px-2 border-t border-border/50 font-mono text-[12px]"
+                      :class="p.matches < 20 ? 'opacity-40' : ''"
+                    >
+                      <span
+                        class="font-medium"
+                        :style="`color:${levelColor(p.level)}`"
+                        x-text="p.level || '—'"
+                      ></span>
+                      <span class="flex items-center gap-1.5 min-w-0">
+                        <span class="flex-1 min-w-0 font-sans text-[13px] truncate" :title="p.nickname" x-text="p.nickname"></span>
+                        <span class="flex items-center gap-0.5 shrink-0">
+                          <a
+                            :href="p.faceitUrl"
+                            target="_blank"
+                            rel="noopener"
+                            class="profile-btn profile-btn--faceit size-4 flex items-center justify-center border border-border rounded-sm transition-colors"
+                            title="FACEIT profile"
+                            :aria-label="p.nickname + ' on FACEIT'"
+                          >
+                            <img src="/static/icons/faceit.svg" class="size-2.5 profile-icon" alt="" />
+                          </a>
+                          <template x-if="p.steamUrl">
+                            <a
+                              :href="p.steamUrl"
+                              target="_blank"
+                              rel="noopener"
+                              class="profile-btn profile-btn--steam size-4 flex items-center justify-center border border-border rounded-sm transition-colors"
+                              title="Steam profile"
+                              :aria-label="p.nickname + ' on Steam'"
+                            >
+                              <img src="/static/icons/steam.svg" class="size-2.5 profile-icon" alt="" />
+                            </a>
+                          </template>
+                          <template x-if="p.ripUrl">
+                            <a
+                              :href="p.ripUrl"
+                              target="_blank"
+                              rel="noopener"
+                              class="profile-btn profile-btn--rip size-4 flex items-center justify-center border border-border rounded-sm transition-colors"
+                              title="Steam .rip profile"
+                              :aria-label="p.nickname + ' on steamcommunity.rip'"
+                            >
+                              <img src="/static/icons/stats.svg" class="size-2.5 profile-icon" alt="" />
+                            </a>
+                          </template>
+                        </span>
+                      </span>
+                      <span
+                        class="hidden sm:block text-right"
+                        :style="p.winPct !== null && `color:${wrColor(p.winPct)}`"
+                        x-text="p.winPct === null ? '—' : p.winPct + '%'"
+                      ></span>
+                      <span
+                        class="hidden sm:block text-right"
+                        :style="p.kd !== null && `color:${kdColor(p.kd)}`"
+                        x-text="p.kd === null ? '—' : p.kd.toFixed(2)"
+                      ></span>
+                      <span
+                        class="text-right"
+                        :style="p.rating !== null && `color:${ratingColor(p.rating)}`"
+                        x-text="p.rating === null ? '—' : p.rating.toFixed(2)"
+                      ></span>
+                      <span class="hidden sm:block text-right text-[#a3a3a3]" x-text="p.matches"></span>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </section>
+
+          <p class="font-mono text-[11px] text-muted mt-4 tracking-wide leading-relaxed">
+            Diff = this team's rating on the map minus the other team's: the mean of
+            the five players, each approximating HLTV 2.0 from their last 100
+            matches and pulled toward their overall form on maps they rarely play.
+            A player with no games on a map counts at their overall rating. Win % and
+            Matches are lifetime, over players who have played the map. Faded
+            players: fewer than 20 matches on the map.
+          </p>
         </div>
       </template>
 

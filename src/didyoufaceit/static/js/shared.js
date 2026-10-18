@@ -20,14 +20,16 @@ function fmtDate(unix) {
   ];
 }
 
-const MAP_NAMES = {
-  de_dust2: "Dust2", de_mirage: "Mirage", de_inferno: "Inferno",
-  de_nuke: "Nuke", de_ancient: "Ancient", de_anubis: "Anubis",
-  de_vertigo: "Vertigo", de_train: "Train", de_cache: "Cache", de_overpass: "Overpass",
-};
+// Display-name overrides for map ids whose name isn't just the id without "de_",
+// title-cased (e.g. { cs_office: "Office" }). Every current map follows the rule.
+const MAP_NAMES = {};
 
 function mapDisplayName(id) {
-  return MAP_NAMES[id] || id.replace("de_", "").replace(/^\w/, (c) => c.toUpperCase());
+  if (!id) return "";
+  if (id === "unknown") return "Unknown";
+  // Best-of-3 rows carry every map: "de_nuke / de_inferno / de_mirage"
+  if (id.includes(" / ")) return id.split(" / ").map(mapDisplayName).join(" / ");
+  return MAP_NAMES[id] || id.replace(/^de_/, "").replace(/^\w/, (c) => c.toUpperCase());
 }
 
 function wrColor(wr) {
@@ -64,13 +66,6 @@ function ratingColor(r) {
   return "#ef4444";
 }
 
-function playerMapStrength(wins, matches, kd, level, rating) {
-  if (matches === 0) return 0;
-  const confidence = 0.3 + 0.7 * Math.min(matches / 80, 1);
-  const r = rating > 0 ? rating : kd > 0 ? 0.5 + 0.4 * kd : 0.5;
-  return Math.round(r * confidence * 100);
-}
-
 function wilsonScore(wins, total) {
   if (total === 0) return 0;
   const z = 1.645, p = wins / total;
@@ -80,12 +75,23 @@ function wilsonScore(wins, total) {
   return (center - spread) / denom;
 }
 
-function friendlyError(msg) {
+// Turn a backend error event into a message for the page. `status` is the HTTP
+// status the backend saw (or null); only when it's missing do we sniff the text.
+function friendlyError(msg, status) {
+  if (typeof status === "number") {
+    if (status === 404) return "Player or match not found. Check the spelling and try again.";
+    if (status === 401 || status === 403) return "API authentication error. Please try again later.";
+    if (status === 429) return "Too many requests. Please wait a moment and try again.";
+    if (status === 502 || status === 503 || status === 504) return "FACEIT servers are busy. Please try again in a moment.";
+    if (status === 400) return msg || "Invalid input. Check the spelling and try again.";
+  }
   if (!msg) return "Something went wrong.";
-  if (msg.includes("404")) return "Player or match not found. Check the spelling and try again.";
-  if (msg.includes("401") || msg.includes("403")) return "API authentication error. Please try again later.";
-  if (msg.includes("503") || msg.includes("502")) return "FACEIT servers are busy. Please try again in a moment.";
-  if (msg.includes("429")) return "Too many requests. Please wait a moment and try again.";
+  if (typeof status !== "number") {
+    if (msg.includes("404")) return "Player or match not found. Check the spelling and try again.";
+    if (msg.includes("401") || msg.includes("403")) return "API authentication error. Please try again later.";
+    if (msg.includes("503") || msg.includes("502")) return "FACEIT servers are busy. Please try again in a moment.";
+    if (msg.includes("429")) return "Too many requests. Please wait a moment and try again.";
+  }
   if (msg.includes("Connection lost")) return msg;
   return msg.replace(/\{.*\}/s, "").replace(/FACEIT API \d+ on \/[^\s:]+:?\s*/, "").trim() || "Something went wrong.";
 }
@@ -119,5 +125,36 @@ function fmtBanDate(dateStr) {
   } catch { return dateStr; }
 }
 
-// Inline SVG for the crosshair logo — used in headers
-const LOGO_CROSSHAIR = `<svg class="inline-block size-[0.6em] mx-[0.1em] align-middle" viewBox="0 0 64 64" fill="#ff5500"><rect x="28" y="8" width="8" height="18" rx="1"/><rect x="28" y="38" width="8" height="18" rx="1"/><rect x="8" y="28" width="18" height="8" rx="1"/><rect x="38" y="28" width="18" height="8" rx="1"/></svg>`;
+// One faction's roster as [{ name, id }]: `teams` holds nicknames and `teams_ids`
+// the player ids for the same faction, in the same order.
+function factionRoster(m, faction) {
+  const names = m.teams?.[faction] || [];
+  const ids = m.teams_ids?.[faction] || [];
+  return names.map((name, i) => ({ name, id: ids[i] || "" }));
+}
+
+// True when a roster entry is the given player: by id when both sides have one,
+// otherwise by case-insensitive nickname.
+function isSamePlayer(p, id, nickname) {
+  if (id && p.id) return p.id === id;
+  return !!nickname && p.name.toLowerCase() === nickname.toLowerCase();
+}
+
+// Match card helpers shared by the vs and ban scan pages (spread into the Alpine apps).
+const matchCardHelpers = {
+  matchDate(m) {
+    return fmtDate(m.started_at);
+  },
+  matchScore(m) {
+    return scoreInfo(m.score);
+  },
+  matchMap(m) {
+    return mapDisplayName(m.map || "unknown");
+  },
+  matchIsTournament(m) {
+    return m.competition_type && m.competition_type !== "matchmaking";
+  },
+  matchTournamentLabel(m) {
+    return m.competition_name || m.competition_type;
+  },
+};
