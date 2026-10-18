@@ -1,0 +1,172 @@
+{
+ "rounds": [
+  {
+   "best_of": "1",
+   "competition_id": "73557c8e-4b67-4ac8-bae0-e910b49a5fa0",
+   "game_id": "cs2",
+   "game_mode": "5v5",
+   "match_id": "1-933a200e-5a1a-43a9-b9d5-d1fe703acaca",
+   "match_round": "1",
+   "played": "1",
+   "round_stats": {
+    "Rounds": "21",
+    "Score": "8 / 13",
+    "Region": "SA",
+    "Map": "de_nuke",
+    "Winner": "927f9c6f-e8e6-4b53-8c60-3f1c3df71e2d"
+   },
+   "teams": [
+    {
+     "team_id": "00fde2e9-8e2c-476b-b196-f084aa99c764",
+     "premade": false,
+     "team_stats": {
+      "Team": "team_enrolaS666",
+      "Second Half Score": "3",
+      "Team Win": "0",
+      "Team Headshots": "8.6",
+      "Final Score": "8",
+      "Overtime score": "0",
+      "First Half Score": "5"
+     },
+     "players": [
+      {
+       "player_id": "00fde2e9-8e2c-476b-b196-f084aa99c764",
+       "nickname": "enrolaS666",
+       "player_stats": {
+        "K/D Ratio": "1.12",
+        "Kills": "18",
+        "Assists": "3",
+        "ADR": "82.8",
+        "Deaths": "16",
+        "Result": "0"
+       }
+      },
+      {
+       "player_id": "3738f8db-ac41-4bed-8ed7-bdba298035a6",
+       "nickname": "ROMP3",
+       "player_stats": {
+        "Deaths": "17",
+        "K/D Ratio": "0.65",
+        "Result": "0",
+        "ADR": "72.2",
+        "Kills": "11",
+        "Assists": "5"
+       }
+      },
+      {
+       "player_id": "e1bf2872-fef6-40e6-8e40-0875b76c3d3a",
+       "nickname": "-MILDELAURA",
+       "player_stats": {
+        "K/D Ratio": "0.56",
+        "Deaths": "16",
+        "Result": "0",
+        "ADR": "55.3",
+        "Kills": "9",
+        "Assists": "3"
+       }
+      },
+      {
+       "player_id": "737346eb-d167-4649-ba4d-bd392c91770c",
+       "nickname": "diamon3ye",
+       "player_stats": {
+        "Assists": "3",
+        "Deaths": "14",
+        "Result": "0",
+        "Kills": "20",
+        "K/D Ratio": "1.43",
+        "ADR": "83.5"
+       }
+      },
+      {
+       "player_id": "6512a7fb-3dc8-4294-8e77-521a6a4dd42c",
+       "nickname": "MAKAVELIG0D",
+       "player_stats": {
+        "K/D Ratio": "0.67",
+        "ADR": "56.5",
+        "Assists": "3",
+        "Result": "0",
+        "Kills": "8",
+        "Deaths": "12"
+       }
+      }
+     ]
+    },
+    {
+     "team_id": "927f9c6f-e8e6-4b53-8c60-3f1c3df71e2d",
+     "premade": false,
+     "team_stats": {
+      "Team Win": "1",
+      "Overtime score": "0",
+      "First Half Score": "7",
+      "Team": "team__bau",
+      "Team Headshots": "8.2",
+      "Final Score": "13",
+      "Second Half Score": "6"
+     },
+     "players": [
+      {
+       "player_id": "4e11d17b-ca6d-46ab-b988-bc145d64481d",
+       "nickname": "_bau",
+       "player_stats": {
+        "Assists": "5",
+        "Result": "1",
+        "Kills": "16",
+        "Deaths": "14",
+        "ADR": "76.5",
+        "K/D Ratio": "1.14"
+       }
+      },
+      {
+       "player_id": "1b157aa2-5f65-4d89-909c-c783d4a89017",
+       "nickname": "Penedcaballo",
+       "player_stats": {
+        "Assists": "6",
+        "Result": "1",
+        "K/D Ratio": "1.45",
+        "ADR": "90.9",
+        "Kills": "16",
+        "Deaths": "11"
+       }
+      },
+      {
+       "player_id": "b6470189-1e3b-450f-b1cd-e4f730a290d3",
+       "nickname": "PatitutituJr",
+       "player_stats": {
+        "Result": "1",
+        "Deaths": "15",
+        "Kills": "18",
+        "ADR": "90.8",
+        "K/D Ratio": "1.2",
+        "Assists": "5"
+       }
+      },
+      {
+       "player_id": "ef7fbb3e-0ce2-439c-b8e3-5f929202fa18",
+       "nickname": "Boki-jr",
+       "player_stats": {
+        "Assists": "5",
+        "Result": "1",
+        "ADR": "48",
+        "K/D Ratio": "0.71",
+        "Kills": "10",
+        "Deaths": "14"
+       }
+      },
+      {
+       "player_id": "384c37c6-b326-4c97-b873-249c8ce75863",
+       "nickname": "ElectroNicky",
+       "player_stats": {
+        "Assists": "4",
+        "Kills": "15",
+        "Deaths": "13",
+        "ADR": "72.9",
+        "Result": "1",
+        "K/D Ratio": "1.15"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

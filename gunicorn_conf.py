@@ -1,14 +1,14 @@
 """Gunicorn configuration for production deployment."""
 
-import multiprocessing
 import os
 
 # Bind
 bind = f"0.0.0.0:{os.environ.get('PORT', '5000')}"
 
-# Workers — uvicorn workers for async support
+# Workers — uvicorn workers for async support. The app is I/O-bound (FACEIT and Postgres), and
+# each worker has its own FACEIT client and concurrency cap, so a few workers go a long way.
 worker_class = "uvicorn.workers.UvicornWorker"
-workers = int(os.environ.get("WEB_CONCURRENCY", multiprocessing.cpu_count() * 2 + 1))
+workers = int(os.environ.get("WEB_CONCURRENCY", 2))
 
 # Timeout — SSE connections can be long-lived
 timeout = 300

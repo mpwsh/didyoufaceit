@@ -2,6 +2,8 @@
 
 function vsApp() {
   return {
+    ...matchCardHelpers,
+
     // search state
     searching: false,
     statusMsg: "Connecting…",
@@ -12,10 +14,11 @@ function vsApp() {
     // results
     you: "",
     opp: "",
+    youId: "",
+    oppId: "",
     enemies: [],
     teammates: [],
     errorMsg: "",
-    cacheNotice: null,
 
     // filters
     filterMap: "all",
@@ -26,19 +29,24 @@ function vsApp() {
     enemiesShown: 25,
     teammatesShown: 25,
 
-    // cache
-    _cache: {},
-    _cacheVersion: 0,
-    _invalidate() {
-      this._cacheVersion++;
-      this._cache = {};
-    },
-    _memo(key, fn) {
-      const v = this._cacheVersion;
-      if (this._cache[key]?.v === v) return this._cache[key].r;
-      const r = fn.call(this);
-      this._cache[key] = { v, r };
-      return r;
+    // Derived values, rebuilt by recompute() whenever the matches or the filters change.
+    stats: {
+      availableMaps: ["all"],
+      availableYears: ["all"],
+      availableModes: ["all"],
+      filteredEnemies: [],
+      filteredTeammates: [],
+      youWins: 0,
+      oppWins: 0,
+      draws: 0,
+      tmWins: 0,
+      tmLosses: 0,
+      tmDraws: 0,
+      tmWr: 0,
+      mapWins: {},
+      bestMap: null,
+      worstMap: null,
+      bestLineups: [],
     },
 
     // SSE
@@ -63,31 +71,10 @@ function vsApp() {
         : 0;
     },
 
-    get availableMaps() {
-      const maps = new Set(
-        [...this.enemies, ...this.teammates].map((m) => m.map).filter(Boolean),
-      );
-      return ["all", ...Array.from(maps).sort()];
-    },
-    get availableYears() {
-      const years = new Set(
-        [...this.enemies, ...this.teammates]
-          .map((m) =>
-            m.started_at ? new Date(m.started_at * 1000).getFullYear() : null,
-          )
-          .filter(Boolean),
-      );
-      return ["all", ...Array.from(years).sort((a, b) => b - a)];
-    },
-    get availableModes() {
-      const modes = new Set(
-        [...this.enemies, ...this.teammates].map((m) => {
-          if (!m.competition_type || m.competition_type === "matchmaking")
-            return "matchmaking";
-          return m.competition_name || m.competition_type;
-        }),
-      );
-      return ["all", ...Array.from(modes).sort()];
+    _modeOf(m) {
+      if (!m.competition_type || m.competition_type === "matchmaking")
+        return "matchmaking";
+      return m.competition_name || m.competition_type;
     },
 
     _passes(m) {
@@ -99,170 +86,180 @@ function vsApp() {
             parseInt(this.filterYear))
       )
         return false;
-      if (this.filterMode !== "all") {
-        const mode =
-          !m.competition_type || m.competition_type === "matchmaking"
-            ? "matchmaking"
-            : m.competition_name || m.competition_type;
-        if (mode !== this.filterMode) return false;
-      }
+      if (this.filterMode !== "all" && this._modeOf(m) !== this.filterMode)
+        return false;
       return true;
     },
 
-    get filteredEnemies() {
-      return [...this.enemies]
-        .filter((m) => this._passes(m))
-        .sort((a, b) => b.started_at - a.started_at);
-    },
-    get filteredTeammates() {
-      return [...this.teammates]
-        .filter((m) => this._passes(m))
-        .sort((a, b) => b.started_at - a.started_at);
-    },
     get pagedEnemies() {
-      return this.filteredEnemies.slice(0, this.enemiesShown);
+      return this.stats.filteredEnemies.slice(0, this.enemiesShown);
     },
     get pagedTeammates() {
-      return this.filteredTeammates.slice(0, this.teammatesShown);
+      return this.stats.filteredTeammates.slice(0, this.teammatesShown);
     },
 
-    get youWins() {
-      return this.filteredEnemies.filter((m) => scoreInfo(m.score).win === true)
-        .length;
-    },
-    get oppWins() {
-      return this.filteredEnemies.filter(
-        (m) => scoreInfo(m.score).win === false,
-      ).length;
-    },
-    get draws() {
-      return this.filteredEnemies.filter((m) => scoreInfo(m.score).win === null)
-        .length;
-    },
-    get tmWins() {
-      return this.filteredTeammates.filter(
-        (m) => scoreInfo(m.score).win === true,
-      ).length;
-    },
-    get tmLosses() {
-      return this.filteredTeammates.filter(
-        (m) => scoreInfo(m.score).win === false,
-      ).length;
-    },
-    get tmDraws() {
-      return this.filteredTeammates.filter(
-        (m) => scoreInfo(m.score).win === null,
-      ).length;
-    },
-    get tmWr() {
-      const t = this.tmWins + this.tmLosses;
-      return t > 0 ? Math.round((this.tmWins / t) * 100) : 0;
+    // ── Derived stats ───────────────────────────────────────────────────────
+    recompute() {
+      const all = [...this.enemies, ...this.teammates];
+      const byDate = (a, b) => b.started_at - a.started_at;
+      const filteredEnemies = this.enemies
+        .filter((m) => this._passes(m))
+        .sort(byDate);
+      const filteredTeammates = this.teammates
+        .filter((m) => this._passes(m))
+        .sort(byDate);
+      const e = this._tally(filteredEnemies);
+      const t = this._tally(filteredTeammates);
+      const mapWins = this._mapWins(filteredTeammates);
+      const bestMap = this._bestMap(mapWins);
+      const years = all
+        .map((m) =>
+          m.started_at ? new Date(m.started_at * 1000).getFullYear() : null,
+        )
+        .filter(Boolean);
+      this.stats = {
+        availableMaps: [
+          "all",
+          ...[...new Set(all.map((m) => m.map).filter(Boolean))].sort(),
+        ],
+        availableYears: ["all", ...[...new Set(years)].sort((a, b) => b - a)],
+        availableModes: [
+          "all",
+          ...[...new Set(all.map((m) => this._modeOf(m)))].sort(),
+        ],
+        filteredEnemies,
+        filteredTeammates,
+        youWins: e.w,
+        oppWins: e.l,
+        draws: e.d,
+        tmWins: t.w,
+        tmLosses: t.l,
+        tmDraws: t.d,
+        tmWr: t.w + t.l > 0 ? Math.round((t.w / (t.w + t.l)) * 100) : 0,
+        mapWins,
+        bestMap,
+        worstMap: this._worstMap(mapWins, bestMap),
+        bestLineups: this._bestLineups(filteredTeammates),
+      };
     },
 
-    get filteredMapWins() {
-      return this._memo("fMW", function () {
-        const mw = {};
-        for (const m of this.filteredTeammates) {
-          const key = m.map || "unknown";
-          if (!mw[key]) mw[key] = { w: 0, l: 0 };
-          const { win } = scoreInfo(m.score);
-          if (win === true) mw[key].w++;
-          else if (win === false) mw[key].l++;
-        }
-        return mw;
-      });
+    _tally(matches) {
+      let w = 0,
+        l = 0,
+        d = 0;
+      for (const m of matches) {
+        const { win } = scoreInfo(m.score);
+        if (win === true) w++;
+        else if (win === false) l++;
+        else d++;
+      }
+      return { w, l, d };
     },
-    get bestMap() {
-      return this._memo("bM", function () {
-        let best = null,
-          bestScore = -1;
-        for (const [map, { w, l }] of Object.entries(this.filteredMapWins)) {
-          if (w + l < 5) continue;
-          const ws = wilsonScore(w, w + l);
-          if (ws > bestScore) {
-            best = map;
-            bestScore = ws;
-          }
-        }
-        return best;
-      });
+
+    _mapWins(teammates) {
+      const mw = {};
+      for (const m of teammates) {
+        const key = m.map || "unknown";
+        // Per-map records only: skip unknown maps and best-of-3 series ("a / b / c")
+        if (key === "unknown" || key.includes(" / ")) continue;
+        if (!mw[key]) mw[key] = { w: 0, l: 0 };
+        const { win } = scoreInfo(m.score);
+        if (win === true) mw[key].w++;
+        else if (win === false) mw[key].l++;
+      }
+      return mw;
     },
-    get worstMap() {
-      return this._memo("wM", function () {
-        let worst = null,
-          worstScore = 2;
-        for (const [map, { w, l }] of Object.entries(this.filteredMapWins)) {
-          if (w + l < 5 || map === this.bestMap) continue;
-          const ws = wilsonScore(w, w + l);
-          if (ws < worstScore) {
-            worst = map;
-            worstScore = ws;
-          }
+
+    // Best map: highest Wilson lower bound (confidently good).
+    _bestMap(mapWins) {
+      let best = null,
+        bestScore = -1;
+      for (const [map, { w, l }] of Object.entries(mapWins)) {
+        if (w + l < 5) continue;
+        const ws = wilsonScore(w, w + l);
+        if (ws > bestScore) {
+          best = map;
+          bestScore = ws;
         }
-        return worst;
-      });
+      }
+      return best;
     },
-    get bestLineups() {
-      return this._memo("bL", function () {
-        const counts = {};
-        for (const m of this.teammates) {
-          const ids = ((m.teams_ids || m.teams)[m.your_team] || [])
-            .slice()
-            .sort();
-          const key = ids.join("|");
-          const displayRoster = m.teams[m.your_team] || [];
-          if (!counts[key])
-            counts[key] = { roster: displayRoster, w: 0, l: 0, d: 0 };
-          const { win } = scoreInfo(m.score);
-          if (win === true) counts[key].w++;
-          else if (win === false) counts[key].l++;
-          else counts[key].d++;
+
+    // Worst map: lowest Wilson upper bound (confidently bad), so a short
+    // unlucky run doesn't outrank a long losing record.
+    _worstMap(mapWins, bestMap) {
+      let worst = null,
+        worstScore = 2;
+      for (const [map, { w, l }] of Object.entries(mapWins)) {
+        if (w + l < 5 || map === bestMap) continue;
+        const upper = 1 - wilsonScore(l, w + l);
+        if (upper < worstScore) {
+          worst = map;
+          worstScore = upper;
         }
-        return Object.values(counts)
-          .filter((c) => c.w + c.l >= 2)
-          .map((c) => ({
-            ...c,
-            total: c.w + c.l + c.d,
-            wr: c.w + c.l > 0 ? Math.round((c.w / (c.w + c.l)) * 100) : 0,
-            wilson: wilsonScore(c.w, c.w + c.l),
-          }))
-          .sort((a, b) => b.wilson - a.wilson)
-          .slice(0, 8);
-      });
+      }
+      return worst;
+    },
+
+    _bestLineups(teammates) {
+      const counts = {};
+      for (const m of teammates) {
+        const ids = ((m.teams_ids || m.teams)[m.your_team] || [])
+          .slice()
+          .sort();
+        const key = ids.join("|");
+        if (!counts[key])
+          counts[key] = {
+            key,
+            roster: factionRoster(m, m.your_team).map((p) => ({
+              name: p.name,
+              cls: this._rosterCls(p),
+            })),
+            w: 0,
+            l: 0,
+            d: 0,
+          };
+        const { win } = scoreInfo(m.score);
+        if (win === true) counts[key].w++;
+        else if (win === false) counts[key].l++;
+        else counts[key].d++;
+      }
+      return Object.values(counts)
+        .filter((c) => c.w + c.l >= 2)
+        .map((c) => ({
+          ...c,
+          total: c.w + c.l + c.d,
+          wr: c.w + c.l > 0 ? Math.round((c.w / (c.w + c.l)) * 100) : 0,
+          wilson: wilsonScore(c.w, c.w + c.l),
+        }))
+        .sort((a, b) => b.wilson - a.wilson)
+        .slice(0, 8);
     },
 
     mapStatsLabel(map) {
-      const s = this.filteredMapWins[map];
+      const s = this.stats.mapWins[map];
       if (!s) return "";
       const wr = s.w + s.l > 0 ? Math.round((s.w / (s.w + s.l)) * 100) : 0;
-      return `(${wr}%\u00a0·\u00a0${s.w}W\u00a0${s.l}L)`;
+      return `(${wr}% · ${s.w}W ${s.l}L)`;
     },
 
-    // Match card helpers
-    matchDate(m) {
-      return fmtDate(m.started_at);
-    },
-    matchScore(m) {
-      return scoreInfo(m.score);
-    },
-    matchMap(m) {
-      return m.map || "UNKNOWN";
-    },
-    matchIsTournament(m) {
-      return m.competition_type && m.competition_type !== "matchmaking";
-    },
-    matchTournamentLabel(m) {
-      return m.competition_name || m.competition_type;
+    _rosterCls(p) {
+      if (isSamePlayer(p, this.youId, this.you)) return "text-brand";
+      if (isSamePlayer(p, this.oppId, this.opp)) return "text-blue";
+      return "";
     },
     matchRosterYours(m) {
-      return (m.teams[m.your_team] || []).map((n) => ({
-        name: n,
-        cls: n === this.you ? "text-brand" : n === this.opp ? "text-blue" : "",
+      return factionRoster(m, m.your_team).map((p) => ({
+        name: p.name,
+        cls: this._rosterCls(p),
       }));
     },
 
     // ── Init ────────────────────────────────────────────────────────────────
     init() {
+      this.$watch("filterMap", () => this.recompute());
+      this.$watch("filterYear", () => this.recompute());
+      this.$watch("filterMode", () => this.recompute());
       const p = new URLSearchParams(window.location.search);
       const a = p.get("a")?.trim();
       const b = p.get("b")?.trim();
@@ -271,12 +268,6 @@ function vsApp() {
         this.opp = b;
         this.$nextTick(() => this._startSearch(a, b));
       }
-      window.addEventListener("beforeunload", () => {
-        if (this._es) {
-          this._es.close();
-          this._es = null;
-        }
-      });
     },
 
     cancelSearch() {
@@ -290,12 +281,12 @@ function vsApp() {
         this._flushTimer = null;
       }
       this.searching = false;
-      this._invalidate();
     },
 
     _startSearch(you, opp) {
       this.errorMsg = "";
-      this.cacheNotice = null;
+      this.youId = "";
+      this.oppId = "";
       this.enemies = [];
       this.teammates = [];
       this._enemyIds = new Set();
@@ -306,8 +297,8 @@ function vsApp() {
       this.filterMode = "all";
       this.enemiesShown = 25;
       this.teammatesShown = 25;
-      this._invalidate();
       this._pendingMatches = [];
+      this.recompute();
       this.searching = true;
       this.statusMsg = "Connecting…";
       this.progressChecked = 0;
@@ -331,6 +322,12 @@ function vsApp() {
           case "status":
             this.statusMsg = ev.msg;
             break;
+          case "players_resolved":
+            this.youId = ev.you?.player_id || "";
+            this.oppId = ev.opponent?.player_id || "";
+            if (ev.you?.nickname) this.you = ev.you.nickname;
+            if (ev.opponent?.nickname) this.opp = ev.opponent.nickname;
+            break;
           case "progress":
             if (ev.total) this.progressTotal = ev.total;
             if (ev.checked) this.progressChecked = ev.checked;
@@ -350,7 +347,7 @@ function vsApp() {
               your_team: ev.your_team,
               same_team: ev.same_team,
               teams: Object.freeze(ev.teams),
-              teams_ids: Object.freeze(ev.teams_ids || ev.teams),
+              teams_ids: ev.teams_ids ? Object.freeze(ev.teams_ids) : null,
               competition_type: ev.competition_type || "",
               competition_name: ev.competition_name || "",
             });
@@ -369,10 +366,10 @@ function vsApp() {
               clearTimeout(this._flushTimer);
               this._flushTimer = null;
             }
+            this.recompute();
             this.searching = false;
             this._done = true;
-            this._invalidate();
-            this._finalize(ev);
+            this._finalize();
             es.close();
             this._es = null;
             break;
@@ -383,8 +380,7 @@ function vsApp() {
               this._flushTimer = null;
             }
             this.searching = false;
-            this._invalidate();
-            this.errorMsg = friendlyError(ev.msg);
+            this.errorMsg = friendlyError(ev.msg, ev.status);
             es.close();
             this._es = null;
             break;
@@ -395,14 +391,12 @@ function vsApp() {
         // After "done" or "error" we already called es.close() — ignore the
         // onerror that fires when the server then drops the TCP connection.
         if (this._done || this.errorMsg) return;
-        if (es.readyState === EventSource.CLOSED) return;
         this._flushMatches();
         if (this._flushTimer) {
           clearTimeout(this._flushTimer);
           this._flushTimer = null;
         }
         this.searching = false;
-        this._invalidate();
         this.errorMsg = "Connection lost. Please try again.";
         es.close();
         this._es = null;
@@ -431,18 +425,13 @@ function vsApp() {
       if (newEnemies.length) this.enemies = [...this.enemies, ...newEnemies];
       if (newTeammates.length)
         this.teammates = [...this.teammates, ...newTeammates];
+      this.recompute();
     },
 
-    _finalize(ev) {
+    _finalize() {
       if (!this.enemies.length && !this.teammates.length) {
         this.errorMsg = `No matches found between ${this.you} and ${this.opp}.`;
-        return;
       }
-      const hit = ev.cached;
-      const msg = hit
-        ? `loaded from cache · ${ev.total_checked.toLocaleString()} matches indexed`
-        : `scan complete · ${ev.total_checked.toLocaleString()} indexed · ${ev.new_fetched.toLocaleString()} fetched from api`;
-      this.cacheNotice = { hit, msg };
     },
   };
 }

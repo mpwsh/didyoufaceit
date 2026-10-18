@@ -1,0 +1,187 @@
+{
+ "match_id": "1-933a200e-5a1a-43a9-b9d5-d1fe703acaca",
+ "teams": {
+  "faction1": {
+   "faction_id": "00fde2e9-8e2c-476b-b196-f084aa99c764",
+   "leader": "00fde2e9-8e2c-476b-b196-f084aa99c764",
+   "roster": [
+    {
+     "player_id": "00fde2e9-8e2c-476b-b196-f084aa99c764",
+     "nickname": "enrolaS666",
+     "membership": "premium",
+     "game_player_id": "76561199566949433",
+     "game_player_name": "dont cry baby",
+     "game_skill_level": 10,
+     "anticheat_required": true
+    },
+    {
+     "player_id": "e1bf2872-fef6-40e6-8e40-0875b76c3d3a",
+     "nickname": "-MILDELAURA",
+     "membership": "premium",
+     "game_player_id": "76561199578851510",
+     "game_player_name": "m1L990k",
+     "game_skill_level": 8,
+     "anticheat_required": true
+    },
+    {
+     "player_id": "3738f8db-ac41-4bed-8ed7-bdba298035a6",
+     "nickname": "ROMP3",
+     "membership": "super_match_token",
+     "game_player_id": "76561198850402831",
+     "game_player_name": "ROMP3",
+     "game_skill_level": 10,
+     "anticheat_required": true
+    },
+    {
+     "player_id": "737346eb-d167-4649-ba4d-bd392c91770c",
+     "nickname": "diamon3ye",
+     "membership": "super_match_token",
+     "game_player_id": "76561198202762989",
+     "game_player_name": "diamon3ye",
+     "game_skill_level": 9,
+     "anticheat_required": true
+    },
+    {
+     "player_id": "6512a7fb-3dc8-4294-8e77-521a6a4dd42c",
+     "nickname": "MAKAVELIG0D",
+     "membership": "super_match_token",
+     "game_player_id": "76561198289332136",
+     "game_player_name": "Dyne",
+     "game_skill_level": 8,
+     "anticheat_required": true
+    }
+   ],
+   "stats": {
+    "winProbability": 0.45,
+    "skillLevel": {
+     "average": 9,
+     "range": {
+      "min": 8,
+      "max": 10
+     }
+    },
+    "rating": 1968
+   },
+   "substituted": false,
+   "name": "team_enrolaS666",
+   "type": ""
+  },
+  "faction2": {
+   "faction_id": "927f9c6f-e8e6-4b53-8c60-3f1c3df71e2d",
+   "leader": "4e11d17b-ca6d-46ab-b988-bc145d64481d",
+   "roster": [
+    {
+     "player_id": "4e11d17b-ca6d-46ab-b988-bc145d64481d",
+     "nickname": "_bau",
+     "membership": "premium",
+     "game_player_id": "76561198001570573",
+     "game_player_name": "bau",
+     "game_skill_level": 10,
+     "anticheat_required": true
+    },
+    {
+     "player_id": "384c37c6-b326-4c97-b873-249c8ce75863",
+     "nickname": "ElectroNicky",
+     "membership": "premium",
+     "game_player_id": "76561198086177565",
+     "game_player_name": "Nicky21",
+     "game_skill_level": 9,
+     "anticheat_required": true
+    },
+    {
+     "player_id": "ef7fbb3e-0ce2-439c-b8e3-5f929202fa18",
+     "nickname": "Boki-jr",
+     "membership": "premium",
+     "game_player_id": "76561198966991099",
+     "game_player_name": "BDK",
+     "game_skill_level": 9,
+     "anticheat_required": true
+    },
+    {
+     "player_id": "b6470189-1e3b-450f-b1cd-e4f730a290d3",
+     "nickname": "PatitutituJr",
+     "membership": "premium",
+     "game_player_id": "76561198352083804",
+     "game_player_name": "EnePe! [P]atitutitu",
+     "game_skill_level": 10,
+     "anticheat_required": true
+    },
+    {
+     "player_id": "1b157aa2-5f65-4d89-909c-c783d4a89017",
+     "nickname": "Penedcaballo",
+     "membership": "super_match_token",
+     "game_player_id": "76561198389921456",
+     "game_player_name": "EnePe! [P]ENEDECABALLO",
+     "game_skill_level": 9,
+     "anticheat_required": true
+    }
+   ],
+   "stats": {
+    "winProbability": 0.55,
+    "skillLevel": {
+     "average": 9,
+     "range": {
+      "min": 9,
+      "max": 10
+     }
+    },
+    "rating": 2027
+   },
+   "substituted": false,
+   "name": "team__bau",
+   "type": ""
+  }
+ },
+ "voting": {
+  "voted_entity_types": [
+   "location",
+   "map"
+  ],
+  "map": {
+   "entities": [
+    {
+     "class_name": "de_cache",
+     "game_map_id": "de_cache",
+     "guid": "de_cache",
+     "name": "Cache"
+    },
+    {
+     "class_name": "de_anubis",
+     "game_map_id": "de_anubis",
+     "guid": "de_anubis",
+     "name": "Anubis"
+    },
+    {
+     "class_name": "de_nuke",
+     "game_map_id": "de_nuke",
+     "guid": "de_nuke",
+     "name": "Nuke"
+    },
+    {
+     "game_map_id": "de_ancient",
+     "guid": "de_ancient",
+     "name": "Ancient",
+     "class_name": "de_ancient"
+    },
+    {
+     "game_map_id": "de_inferno",
+     "guid": "de_inferno",
+     "name": "Inferno",
+     "class_name": "de_inferno"
+    }
+   ],
+   "pick": [
+    "de_nuke"
+   ]
+  }
+ },
+ "results": {
+  "winner": "faction2",
+  "score": {
+   "faction2": 13,
+   "faction1": 8
+  }
+ },
+ "status": "FINISHED",
+ "best_of": 1
+}

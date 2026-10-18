@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script
       defer
-      src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js"
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.4/dist/cdn.min.js"
     ></script>
     <link
       href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap"
@@ -22,7 +22,6 @@
   <body
     class="bg-[#0d0d0d] text-[#e8e8e8] font-sans min-h-screen overflow-x-hidden"
     x-data="homeApp()"
-    x-init=""
   >
     <div class="relative z-10 max-w-4xl mx-auto px-6">
       <!-- ── Header ── -->
@@ -98,6 +97,12 @@
               />
             </div>
           </div>
+          <div
+            x-show="searchError"
+            class="font-mono text-[11px] text-lose -mt-2 mb-3"
+            role="alert"
+            x-text="searchError"
+          ></div>
           <button
             @click="doSearch()"
             class="w-full bg-brand text-white font-display text-xl tracking-[3px] py-4 transition-opacity hover:opacity-85 active:scale-[.99] flex items-center justify-center gap-3"

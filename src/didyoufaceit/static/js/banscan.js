@@ -2,25 +2,25 @@
 
 function banscanApp() {
   return {
+    ...matchCardHelpers,
+
     banScanning: false,
     banScanNick: "",
+    banScanPlayerId: "",
     banScanStatus: "Connecting…",
     banScanError: "",
     banScanDone: false,
     banScanProgress: {
       checked: 0,
       unique_opponents: 0,
-      banned_found: 0,
       total_matches: 0,
     },
     bannedPlayers: [],
     banScanHasMore: false,
     banScanNextBeforeTs: null,
-    banScanTotalBanned: 0,
     banScanExpandedPlayer: null,
     banFilterReason: "all",
     banKnownReasons: [],
-    errorMsg: "",
     _banEs: null,
 
     get showBanResults() {
@@ -48,26 +48,12 @@ function banscanApp() {
       );
     },
 
-    // Match card helpers
-    matchDate(m) {
-      return fmtDate(m.started_at);
-    },
-    matchScore(m) {
-      return scoreInfo(m.score);
-    },
-    matchMap(m) {
-      return m.map || "UNKNOWN";
-    },
-    matchIsTournament(m) {
-      return m.competition_type && m.competition_type !== "matchmaking";
-    },
-    matchTournamentLabel(m) {
-      return m.competition_name || m.competition_type;
-    },
     banMatchRoster(m) {
-      return (m.teams[m.your_team] || []).map((n) => ({
-        name: n,
-        cls: n === this.banScanNick ? "text-brand" : "",
+      return factionRoster(m, m.your_team).map((p) => ({
+        name: p.name,
+        cls: isSamePlayer(p, this.banScanPlayerId, this.banScanNick)
+          ? "text-brand"
+          : "",
       }));
     },
 
@@ -79,12 +65,6 @@ function banscanApp() {
         this.banScanNick = player;
         this.$nextTick(() => this._startBanScan(player));
       }
-      window.addEventListener("beforeunload", () => {
-        if (this._banEs) {
-          this._banEs.close();
-          this._banEs = null;
-        }
-      });
     },
 
     cancelSearch() {
@@ -106,18 +86,17 @@ function banscanApp() {
 
       if (!isLoadMore) {
         this.banScanNick = nick;
+        this.banScanPlayerId = "";
         this.banScanError = "";
         this.banScanDone = false;
         this.banScanProgress = {
           checked: 0,
           unique_opponents: 0,
-          banned_found: 0,
           total_matches: 0,
         };
         this.bannedPlayers = [];
         this.banScanHasMore = false;
         this.banScanNextBeforeTs = null;
-        this.banScanTotalBanned = 0;
         this.banScanExpandedPlayer = null;
         this.banFilterReason = "all";
         this.banKnownReasons = [];
@@ -152,15 +131,14 @@ function banscanApp() {
             break;
           case "player_resolved":
             this.banScanNick = ev.nickname;
+            this.banScanPlayerId = ev.player_id || "";
             break;
           case "progress":
             this.banScanProgress = {
               checked: prevChecked + (ev.checked || 0),
               unique_opponents: prevOpponents + (ev.unique_opponents || 0),
-              banned_found: this.bannedPlayers.length,
               total_matches: prevMatches + (ev.total_matches || 0),
             };
-            this.banScanTotalBanned = this.bannedPlayers.length;
             break;
           case "banned_player": {
             const newMatches = (ev.matches || []).sort(
@@ -179,6 +157,8 @@ function banscanApp() {
                 );
                 const updated = {
                   ...existing,
+                  // Keep the first page's flag: it was computed against your most recent
+                  // match with this player; older pages would flag bans you played after.
                   matches: merged,
                   matches_against: merged.length,
                 };
@@ -200,7 +180,6 @@ function banscanApp() {
                 },
               ];
             }
-            this.banScanTotalBanned = this.bannedPlayers.length;
             for (const b of ev.bans || []) {
               const norm = normalizeBanReason(b.reason);
               if (norm && !this.banKnownReasons.includes(norm)) {
@@ -210,6 +189,7 @@ function banscanApp() {
             break;
           }
           case "done":
+            // Most recent match against them first
             this.bannedPlayers = [...this.bannedPlayers].sort((a, b) => {
               const aDate = a.matches[0]?.started_at || 0;
               const bDate = b.matches[0]?.started_at || 0;
@@ -222,15 +202,9 @@ function banscanApp() {
             es.close();
             this._banEs = null;
             break;
-          case "cancelled":
-            this.banScanning = false;
-            this.banScanDone = true;
-            es.close();
-            this._banEs = null;
-            break;
           case "error":
             this.banScanning = false;
-            this.banScanError = friendlyError(ev.msg);
+            this.banScanError = friendlyError(ev.msg, ev.status);
             es.close();
             this._banEs = null;
             break;
@@ -238,10 +212,9 @@ function banscanApp() {
       };
 
       es.onerror = () => {
-        // After "done", "cancelled", or "error" we already called es.close() —
+        // After "done" or "error" we already called es.close() —
         // ignore the onerror that fires when the server drops the TCP connection.
         if (this.banScanDone || this.banScanError) return;
-        if (es.readyState === EventSource.CLOSED) return;
         this.banScanning = false;
         this.banScanError = "Connection lost. Please try again.";
         es.close();
