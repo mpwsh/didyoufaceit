@@ -3,6 +3,7 @@
 const FINAL_STATUSES = ["FINISHED", "CANCELLED", "ABORTED"];
 const POOL_POLL_MS = 15000;
 const POOL_POLL_MAX = 40; // ~10 minutes
+const MIN_TEAM_MATCHES = 20; // below this a team's win % on a map is mostly noise
 
 const MATCH_ID_RE =
   /1-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
@@ -60,19 +61,23 @@ function matchroomApp() {
     // - rating: plain mean over the whole roster, so one veteran can't outweigh four
     //   teammates. The server already pulls each player's map rating toward their current
     //   form; a player with no games on the map counts at their overall rating.
-    // - winPct: mean of the win % of players who have played it; matches: their total.
+    // - winPct: pooled over the players who have played it (their wins / their matches),
+    //   so a player with a handful of games barely moves it; matches: their total.
     _teamOnMap(faction, mapId) {
       const players = this.mrFactions[faction]?.players || [];
       const played = players.filter((p) => p.map_stats?.[mapId]?.matches > 0);
       const ratings = players
         .map((p) => p.map_stats?.[mapId]?.rating || p.overall_rating || 0)
         .filter((r) => r > 0);
+      const matches = played.reduce((s, p) => s + p.map_stats[mapId].matches, 0);
+      const wins = played.reduce((s, p) => {
+        const ms = p.map_stats[mapId];
+        return s + (ms.wins ?? (ms.wr * ms.matches) / 100);
+      }, 0);
       return {
         rating: ratings.length ? ratings.reduce((s, r) => s + r, 0) / ratings.length : 0,
-        winPct: played.length
-          ? played.reduce((s, p) => s + p.map_stats[mapId].wr, 0) / played.length
-          : null,
-        matches: played.reduce((s, p) => s + p.map_stats[mapId].matches, 0),
+        winPct: matches ? (wins / matches) * 100 : null,
+        matches,
         withData: played.length,
       };
     },
@@ -90,14 +95,16 @@ function matchroomApp() {
       });
     },
 
-    // One column per team: its maps from best to worst against this opponent, by diff.
+    // One column per team: its maps from best to worst win %, more matches first on a tie.
+    // Maps with too few matches to trust go below the rest, unranked.
     mrColumn(idx) {
-      const sign = idx === 0 ? 1 : -1;
       const rows = this.mrMapStats.map((m) => {
         const t = m.teams[idx];
         return {
           id: m.id,
-          diff: m.diff === null ? null : sign * m.diff,
+          wr: t.winPct,
+          matchCount: t.matches,
+          lowConf: t.winPct !== null && t.matches < MIN_TEAM_MATCHES,
           rating: t.withData ? t.rating.toFixed(2) : "—",
           ratingColor: t.withData ? ratingColor(t.rating) : "",
           winPct: t.winPct === null ? "—" : Math.round(t.winPct) + "%",
@@ -106,8 +113,11 @@ function matchroomApp() {
           lowData: t.withData < 3,
         };
       });
-      rows.sort((a, b) => (a.diff === null) - (b.diff === null) || (b.diff ?? 0) - (a.diff ?? 0));
-      rows.forEach((r, i) => (r.rank = r.diff === null ? "–" : String(i + 1)));
+      const tier = (r) => (r.wr === null ? 2 : r.lowConf ? 1 : 0);
+      rows.sort(
+        (a, b) => tier(a) - tier(b) || (b.wr ?? 0) - (a.wr ?? 0) || b.matchCount - a.matchCount,
+      );
+      rows.forEach((r, i) => (r.rank = tier(r) ? "–" : String(i + 1)));
       return rows;
     },
 

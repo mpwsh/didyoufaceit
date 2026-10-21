@@ -214,9 +214,8 @@
                   <span class="hidden sm:block w-4 shrink-0">#</span
                   ><span class="flex-1 min-w-0">Map</span
                   ><span class="w-9 sm:w-12 shrink-0 text-right">Rating</span
-                  ><span class="hidden sm:block w-12 shrink-0 text-right">Win %</span
-                  ><span class="hidden sm:block w-16 shrink-0 text-right">Matches</span
-                  ><span class="w-14 sm:w-16 shrink-0 text-right">Diff</span>
+                  ><span class="w-10 sm:w-12 shrink-0 text-right">Win %</span
+                  ><span class="w-12 sm:w-16 shrink-0 text-right">Matches</span>
                 </div>
                 <div class="flex flex-col gap-1">
                   <template x-for="row in mrColumn(idx)" :key="row.id">
@@ -233,7 +232,8 @@
                       ></span>
                       <span
                         class="flex-1 min-w-0 font-display text-[16px] sm:text-[19px] tracking-[1px] sm:tracking-[1.5px] truncate"
-                        :class="row.diff === null ? 'text-muted' : ''"
+                        :class="row.wr === null || row.lowConf ? 'text-muted' : ''"
+                        :title="row.lowConf ? 'Too few matches on this map to trust the win %' : ''"
                         x-text="mrMapName(row.id)"
                       ></span>
                       <span
@@ -242,23 +242,17 @@
                         x-text="row.rating"
                       ></span>
                       <span
-                        class="hidden sm:block w-12 shrink-0 font-mono text-[13px] text-right"
+                        class="w-10 sm:w-12 shrink-0 font-mono text-[13px] text-right"
+                        :class="row.lowConf ? 'opacity-40' : ''"
                         :style="row.winColor && `color:${row.winColor}`"
                         x-text="row.winPct"
                       ></span>
                       <span
-                        class="hidden sm:block w-16 shrink-0 font-mono text-[12px] text-right"
+                        class="w-12 sm:w-16 shrink-0 font-mono text-[12px] text-right"
                         :class="row.lowData ? 'text-muted' : 'text-[#a3a3a3]'"
                         :title="row.lowData ? 'Fewer than 3 players have played this map' : ''"
                         x-text="row.matches"
                       ></span>
-                      <span class="w-14 sm:w-16 shrink-0 flex justify-end">
-                        <span
-                          class="font-mono text-[12px] px-2 py-[2px] rounded-full whitespace-nowrap"
-                          :class="diffClass(row.diff)"
-                          x-text="fmtDiff(row.diff)"
-                        ></span>
-                      </span>
                     </button>
                   </template>
                 </div>
@@ -400,12 +394,14 @@
           </section>
 
           <p class="font-mono text-[11px] text-muted mt-4 tracking-wide leading-relaxed">
-            Diff = this team's rating on the map minus the other team's: the mean of
-            the five players, each approximating HLTV 2.0 from their last 100
-            matches and pulled toward their overall form on maps they rarely play.
-            A player with no games on a map counts at their overall rating. Win % and
-            Matches are lifetime, over players who have played the map. Faded
-            players: fewer than 20 matches on the map.
+            Maps are ordered by Win %: the lifetime wins of the players who have
+            played the map over their matches, which is the Matches column. Maps
+            under 20 matches go to the bottom, unranked. Rating is the mean of the
+            five players, each approximating HLTV 2.0 from their last 100 matches and
+            pulled toward their overall form on maps they rarely play; a player with no
+            games on a map counts at their overall rating. The ± pill on a selected map
+            is that team's rating minus the other team's. Faded players: fewer than 20
+            matches on the map.
           </p>
         </div>
       </template>
